@@ -1,0 +1,147 @@
+import type { OpenMode } from "../app/settings";
+
+export type SourceKey = "notion" | "drive" | "pipedrive" | "mail" | "chatgpt" | "claude";
+export type SourceId = "all" | SourceKey;
+
+/** Un résultat affichable (index local, recherche en direct ou action). */
+export interface ResultItem {
+  id: string;
+  source: SourceKey;
+  kind: string;
+  title: string;
+  url: string;
+  /** Lien profond vers l'application (notion://, claude://, superhuman://…) */
+  app?: string;
+  /** Date de dernière modification (ms) */
+  t?: number;
+  icon?: string;
+  /** Texte supplémentaire indexé (non affiché) */
+  text?: string;
+  snippet?: string;
+  unread?: boolean;
+  /** Champs bruts compacts pour filtres et aperçu */
+  f?: Record<string, any>;
+  /** Type de ligne : ouvrir (défaut), recherche native, changer d'outil, poser une question */
+  action?: "open" | "native" | "switch" | "ask";
+  /** Outil cible pour action « switch » */
+  target?: SourceId;
+  live?: boolean;
+  score?: number;
+}
+
+export interface Completion {
+  label: string;
+  insert: string;
+  detail?: string;
+  kind: "operator" | "value" | "contact";
+}
+
+export interface OperatorValue {
+  value: string;
+  label?: string;
+  detail?: string;
+  aliases?: string[];
+}
+
+export interface OperatorDef {
+  key: string;
+  /** Formes acceptées à la saisie ; la première est celle proposée */
+  aliases: string[];
+  label: string;
+  values?: () => OperatorValue[];
+  /** Valeurs fermées : une valeur inconnue (en cours de saisie) est ignorée */
+  strict?: boolean;
+}
+
+export interface ParsedOp {
+  key: string;
+  value: string;
+  negate: boolean;
+  raw: string;
+}
+
+export interface ParsedQuery {
+  raw: string;
+  /** Texte libre (sans opérateurs) */
+  text: string;
+  tokens: string[];
+  ops: ParsedOp[];
+  /** Opérateurs inconnus de l'outil (transmis tels quels pour Gmail) */
+  unknown: string[];
+  /** Le texte libre contient une expression entre guillemets */
+  exact: boolean;
+}
+
+export interface Chip {
+  label: string;
+  op: string;
+  value: string;
+}
+
+export interface DetailRow {
+  label: string;
+  value: string;
+}
+
+export interface Described {
+  sub?: string;
+  meta?: string;
+  badge?: string;
+  badgeTone?: "green" | "red" | "blue" | "gray" | "amber" | "violet";
+}
+
+export interface NativeTarget {
+  label: string;
+  url: string;
+  app?: string;
+  /** Texte copié dans le presse-papiers quand l'outil n'accepte pas de recherche par lien */
+  copy?: string;
+  hint?: string;
+}
+
+export interface SecondaryAction {
+  label: string;
+  run: () => Promise<void> | void;
+}
+
+export interface AppTarget {
+  name: string;
+  process: string;
+  scheme: string;
+  mode: () => OpenMode;
+}
+
+export interface SyncOptions {
+  full: boolean;
+  progress: (message: string) => void;
+}
+
+export interface SourceDef {
+  key: SourceKey;
+  label: string;
+  color: string;
+  placeholder: string;
+  operators: OperatorDef[];
+  chips: Chip[];
+  configured(): boolean;
+  /** Recherche instantanée dans l'index local */
+  localSearch?(q: ParsedQuery, limit: number): ResultItem[];
+  /** Recherche en direct dans l'outil */
+  liveSearch?(q: ParsedQuery, limit: number): Promise<ResultItem[]>;
+  /** Doit-on lancer la recherche en direct pour cette requête ? */
+  wantsLive?(q: ParsedQuery): boolean;
+  /** Résultats quand la barre est vide */
+  emptyResults?(): Promise<ResultItem[]> | ResultItem[];
+  /** Lignes d'action affichées en tête (ex. « Demander à Claude ») */
+  actions?(q: ParsedQuery): ResultItem[];
+  nativeSearch(q: ParsedQuery): NativeTarget;
+  /** Autres outils où relancer la même recherche (ex. Gmail) */
+  extraNative?(q: ParsedQuery): NativeTarget[];
+  describe(item: ResultItem): Described;
+  details(item: ResultItem): DetailRow[];
+  secondaryActions?(item: ResultItem): SecondaryAction[];
+  sync?(opts: SyncOptions): Promise<void>;
+  /** Suggestions pour un mot libre (ex. contacts pour les mails) */
+  textCompletions?(token: string): Completion[];
+  appTarget?: AppTarget;
+}

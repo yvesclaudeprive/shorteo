@@ -1,0 +1,10 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.DS_Store
+# Jamais de secrets dans le dépôt
+.env
+.env.*
+secrets.json

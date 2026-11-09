@@ -1,0 +1,103 @@
+import { createStore } from "./store";
+import { platform } from "./platform";
+
+export type OpenMode = "app-if-running" | "app-if-installed" | "browser";
+export type Theme = "auto" | "light" | "dark";
+
+/**
+ * Paramètres (stockés sur le PC, jamais dans le dépôt).
+ * Les clés d'accès ne sont PAS ici : elles vont dans le coffre-fort Windows.
+ */
+export interface Settings {
+  shortcut: string;
+  hideOnBlur: boolean;
+  theme: Theme;
+  syncMinutes: number;
+  lastSource: string;
+  connected: {
+    notion: boolean;
+    pipedrive: boolean;
+    google: boolean;
+  };
+  pipedriveDomain: string;
+  mailAccount: string;
+  notionOpen: OpenMode;
+  superhumanOpen: OpenMode;
+  claudeOpen: OpenMode;
+  /** Modèles d'URL (variables : {email} {threadId} {q}). Vide = comportement par défaut. */
+  superhumanThreadUrl: string;
+  superhumanSearchUrl: string;
+  notionSearchUrl: string;
+  pipedriveSearchUrl: string;
+  driveMaxItems: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  shortcut: "Ctrl+Shift+Space",
+  hideOnBlur: true,
+  theme: "auto",
+  syncMinutes: 2,
+  lastSource: "all",
+  connected: { notion: false, pipedrive: false, google: false },
+  pipedriveDomain: "",
+  mailAccount: "",
+  notionOpen: "app-if-running",
+  superhumanOpen: "app-if-running",
+  claudeOpen: "app-if-installed",
+  superhumanThreadUrl: "https://mail.superhuman.com/{email}/thread/{threadId}",
+  superhumanSearchUrl: "",
+  notionSearchUrl: "",
+  pipedriveSearchUrl: "",
+  driveMaxItems: 60000,
+};
+
+export const settingsStore = createStore<Settings>({ ...DEFAULT_SETTINGS });
+
+export function settings(): Settings {
+  return settingsStore.get();
+}
+
+export async function loadSettings(): Promise<boolean> {
+  const raw = await platform.settingsLoad();
+  if (!raw) {
+    if (platform.demo) {
+      settingsStore.set({
+        connected: { notion: true, pipedrive: true, google: true },
+        pipedriveDomain: "demo",
+        mailAccount: "vous@exemple.fr",
+      });
+    }
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<Settings>;
+    settingsStore.set({
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      connected: { ...DEFAULT_SETTINGS.connected, ...(parsed.connected ?? {}) },
+    });
+  } catch {
+    /* fichier corrompu : valeurs par défaut */
+  }
+  return true;
+}
+
+let saveTimer: number | undefined;
+
+export function updateSettings(patch: Partial<Settings>): void {
+  settingsStore.set(patch);
+  window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(() => {
+    void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
+  }, 250);
+}
+
+export async function saveSettingsNow(): Promise<void> {
+  window.clearTimeout(saveTimer);
+  await platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
+}
+
+/** Remplace {variable} dans un modèle d'URL (valeurs encodées). */
+export function fillTemplate(tpl: string, vars: Record<string, string>): string {
+  return tpl.replace(/\{(\w+)\}/g, (_, k: string) => encodeURIComponent(vars[k] ?? ""));
+}

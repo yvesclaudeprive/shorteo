@@ -1,0 +1,39 @@
+name: Installateur Windows
+
+# Se lance quand une version est taguée (ex. v0.1.0) ou à la main (onglet Actions).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "Yateo Search v__VERSION__"
+          releaseBody: "Téléchargez le fichier **Yateo.Search_…_x64-setup.exe** ci-dessous, puis lancez-le."
+          releaseDraft: false
+          prerelease: false
