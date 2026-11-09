@@ -226,3 +226,21 @@ export function carryQuery(input: string, target: SourceDef | null): string {
     .map((l) => l.raw)
     .join(" ");
 }
+
+/** Retire toutes les occurrences d'un filtre. */
+export function removeOperator(input: string, source: SourceDef, opKey: string): string {
+  const kept = lex(input).filter((lx) => {
+    const sp = splitOp(lx.raw);
+    if (!sp) return true;
+    const o = findOperator(source, sp.key);
+    return !o || o.key !== opKey;
+  });
+  const out = kept.map((l) => l.raw).join(" ");
+  return out ? out + " " : "";
+}
+
+/** Libellé lisible d'une valeur de filtre. */
+export function valueLabel(op: OperatorDef, value: string): string {
+  const v = (op.values?.() ?? []).find((x) => norm(x.value) === norm(value));
+  return v?.label ?? value;
+}

@@ -118,3 +118,91 @@ export async function disconnectGoogle(): Promise<void> {
   access = null;
   await deleteSecret("google_refresh_token");
 }
+
+// ---------------------------------------------------------------------------
+// Diagnostic : vérifie chaque accès séparément, avec la correction à faire
+// ---------------------------------------------------------------------------
+
+export interface CheckResult {
+  label: string;
+  ok: boolean;
+  message: string;
+  fixUrl?: string;
+}
+
+const API_PAGES: Record<string, string> = {
+  drive: "https://console.cloud.google.com/apis/library/drive.googleapis.com",
+  gmail: "https://console.cloud.google.com/apis/library/gmail.googleapis.com",
+  people: "https://console.cloud.google.com/apis/library/people.googleapis.com",
+};
+
+function explain(e: unknown, api: keyof typeof API_PAGES): { message: string; fixUrl?: string } {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/has not been used|is disabled|SERVICE_DISABLED|accessNotConfigured/i.test(msg))
+    return { message: "API non activée dans votre projet Google Cloud : cliquez sur « Activer ».", fixUrl: API_PAGES[api] };
+  if (/insufficient|scope|PERMISSION_DENIED/i.test(msg))
+    return { message: "Autorisation manquante : cliquez sur « Reconnecter Google » et cochez tous les accès." };
+  if (e instanceof ApiError && e.status === 401) return { message: "Connexion expirée : cliquez sur « Reconnecter Google »." };
+  return { message: msg };
+}
+
+export async function parseClientJson(text: string): Promise<{ clientId: string; clientSecret: string }> {
+  let j: any;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    throw new Error("Ce fichier n'est pas un JSON valide");
+  }
+  const c = j.installed ?? j.web ?? j;
+  if (j.web) throw new Error("Ce client est de type « Application Web » : créez un client de type « Application de bureau ».");
+  if (!c.client_id || !c.client_secret) throw new Error("ID client ou code secret introuvable dans ce fichier");
+  return { clientId: c.client_id, clientSecret: c.client_secret };
+}
+
+export async function testGoogle(): Promise<CheckResult[]> {
+  const out: CheckResult[] = [];
+  try {
+    access = null;
+    await googleToken();
+    out.push({ label: "Connexion Google", ok: true, message: "Jeton valide" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    out.push({
+      label: "Connexion Google",
+      ok: false,
+      message: /invalid_client/i.test(msg)
+        ? "ID client ou code secret incorrect : réimportez le fichier JSON du client."
+        : /invalid_grant/i.test(msg)
+          ? "Accès révoqué ou expiré : cliquez sur « Reconnecter Google »."
+          : msg,
+    });
+    return out;
+  }
+  try {
+    const p = await gapi<any>("https://gmail.googleapis.com/gmail/v1/users/me/profile");
+    out.push({ label: "Gmail (mails)", ok: true, message: `${p.emailAddress} · ${Number(p.threadsTotal ?? 0).toLocaleString("fr-FR")} conversations` });
+  } catch (e) {
+    out.push({ label: "Gmail (mails)", ok: false, ...explain(e, "gmail") });
+  }
+  try {
+    await gapi<any>("https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)");
+    out.push({ label: "Google Drive", ok: true, message: "Accès en lecture OK" });
+  } catch (e) {
+    out.push({ label: "Google Drive", ok: false, ...explain(e, "drive") });
+  }
+  try {
+    await gapi<any>("https://people.googleapis.com/v1/otherContacts?readMask=names,emailAddresses&pageSize=1");
+    out.push({ label: "Contacts (autocomplétion)", ok: true, message: "Accès en lecture OK" });
+  } catch (e) {
+    out.push({ label: "Contacts (autocomplétion)", ok: false, ...explain(e, "people") });
+  }
+  try {
+    await gapi<any>(
+      "https://people.googleapis.com/v1/people:listDirectoryPeople?readMask=names,emailAddresses&sources=DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE&pageSize=1",
+    );
+    out.push({ label: "Annuaire de l'entreprise", ok: true, message: "Accès en lecture OK" });
+  } catch (e) {
+    out.push({ label: "Annuaire de l'entreprise", ok: false, ...explain(e, "people") });
+  }
+  return out;
+}

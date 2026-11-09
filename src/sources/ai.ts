@@ -101,6 +101,7 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
     color: isClaude ? "#e07a55" : "#10a37f",
     placeholder: isClaude ? "Demander à Claude ou retrouver une conversation…" : "Demander à ChatGPT ou retrouver une conversation…",
     operators: [{ key: "modifie", aliases: ["modifié", "depuis"], label: "Conversation depuis", values: () => PERIOD_VALUES }],
+    filterBar: ["modifie"],
     chips: [
       { label: "7 jours", op: "modifie", value: "7j" },
       { label: "30 jours", op: "modifie", value: "30j" },

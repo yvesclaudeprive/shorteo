@@ -269,6 +269,7 @@ export const mailSource: SourceDef = {
   color: "#a78bfa",
   placeholder: "Mails (de:, à:, objet:, avec:pj, après:…)",
   operators: OPERATORS,
+  filterBar: ["from", "to", "is", "has", "in", "newer_than", "label"],
   chips: [
     { label: "Non lus", op: "is", value: "unread" },
     { label: "Avec PJ", op: "has", value: "attachment" },

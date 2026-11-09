@@ -1,3 +1,4 @@
+import { dragHandle } from "../app/drag";
 import { useEffect, useRef } from "react";
 import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX } from "lucide-react";
 import { useStore } from "../app/store";
@@ -12,22 +13,22 @@ import {
   runNative,
   selectKey,
   setSource,
-  toggleChip,
   ui,
   willOpenInApp,
 } from "../app/controller";
-import { hasOp, parseQuery } from "../app/query";
+import { parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ResultItem } from "../sources/types";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { SearchBar } from "./SearchBar";
+import { FilterBar } from "./FilterBar";
 import { TopActions } from "./TopBar";
 
 function SourcePills() {
   const { source } = useStore(ui);
   return (
-    <nav className="pills" data-tauri-drag-region>
+    <nav className="pills">
       {BAR_ORDER.map((id, i) => (
         <button
           key={id}
@@ -42,41 +43,6 @@ function SourcePills() {
         </button>
       ))}
     </nav>
-  );
-}
-
-function Chips() {
-  const s = useStore(ui);
-  const src = sourceDef(s.source);
-  if (!src || !src.chips.length) {
-    return (
-      <div className="chips">
-        <span className="chips-hint">
-          Astuce : <kbd>Alt+2</kbd> à <kbd>Alt+7</kbd> relance la même recherche dans un seul outil, avec ses filtres.
-        </span>
-      </div>
-    );
-  }
-  const q = parseQuery(s.query, src);
-  return (
-    <div className="chips">
-      {src.chips.map((c) => {
-        const on = hasOp(q, c.op, c.value);
-        return (
-          <button
-            key={`${c.op}:${c.value}`}
-            className={`chip ${on ? "on" : ""}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => toggleChip(c)}
-          >
-            {c.label}
-          </button>
-        );
-      })}
-      <span className="chips-hint">
-        ou tapez <code>{src.operators[0]?.aliases[0]}:</code> …
-      </span>
-    </div>
   );
 }
 
@@ -112,7 +78,7 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
         ) : d.sub ? (
           <div className="row-sub">{d.sub}</div>
         ) : null}
-        {item.source === "mail" && item.snippet && item.action !== "native" && <div className="row-snippet">{item.snippet}</div>}
+        {item.snippet && item.action !== "native" && <div className="row-snippet">{item.snippet}</div>}
       </div>
       <div className="row-side">
         {d.badge && <span className={`badge tone-${d.badgeTone ?? "gray"}`}>{d.badge}</span>}
@@ -326,12 +292,12 @@ function Footer() {
 export function SearchView() {
   return (
     <div className="view search-view">
-      <header className="top" data-tauri-drag-region>
+      <header className="top" onMouseDown={dragHandle}>
         <SourcePills />
         <TopActions />
       </header>
       <SearchBar />
-      <Chips />
+      <FilterBar />
       <div className="body">
         <Results />
         <Preview />

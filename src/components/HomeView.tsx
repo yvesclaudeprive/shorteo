@@ -1,3 +1,4 @@
+import { dragHandle } from "../app/drag";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { History } from "lucide-react";
 import { useStore } from "../app/store";
@@ -144,11 +145,11 @@ export function HomeView() {
 
   return (
     <div className="view home-view">
-      <header className="top" data-tauri-drag-region>
-        <div className="brand" data-tauri-drag-region>
+      <header className="top" onMouseDown={dragHandle}>
+        <div className="brand">
           <ShorteoLogo size={22} />
-          <span data-tauri-drag-region>Shorteo</span>
-          <span className="brand-by" data-tauri-drag-region>
+          <span>Shorteo</span>
+          <span className="brand-by">
             by Yateo
           </span>
         </div>

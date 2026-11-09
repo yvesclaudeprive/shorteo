@@ -10,6 +10,7 @@ import {
   carryQuery,
   computeCompletions,
   parseQuery,
+  removeOperator,
   toggleOperator,
   type CompletionState,
 } from "./query";
@@ -215,7 +216,7 @@ function searchOne(id: number, key: SourceKey, query: string): void {
         { liveLoading: false },
       );
     }
-  }, 220);
+  }, src.liveDelay?.() ?? 220);
 }
 
 function searchAll(id: number, query: string): void {
@@ -382,16 +383,52 @@ export function acceptCompletion(index?: number): void {
   focusInput();
 }
 
-/** Fin de titre proposée en gris quand aucun opérateur n'est en cours. */
+interface Ghost {
+  text: string;
+  /** complétion d'un mot (on ajoute une espace après acceptation) */
+  word: boolean;
+}
+
+/**
+ * Complétion grisée dans la barre :
+ * 1. la fin du titre d'un résultat qui commence par ce qui est tapé ;
+ * 2. sinon, la fin du mot en cours, prise dans les titres des résultats.
+ */
+function ghostInfo(s: UIState): Ghost | null {
+  if (!s.query || s.caret !== s.query.length || s.comp.open) return null;
+  if (/\s$/.test(s.query)) return null;
+  const items = flatItems(s.groups)
+    .filter((i) => !i.action || i.action === "open")
+    .slice(0, 15);
+  if (!items.length) return null;
+  if (!s.query.includes(":")) {
+    for (const it of items) {
+      if (it.title.length <= s.query.length) continue;
+      if (norm(it.title.slice(0, s.query.length)) === norm(s.query)) return { text: it.title.slice(s.query.length), word: false };
+    }
+  }
+  const m = /(\S+)$/.exec(s.query);
+  const last = m?.[1] ?? "";
+  if (last.length < 2 || last.includes(":")) return null;
+  const nl = norm(last);
+  const counts = new Map<string, number>();
+  for (const it of items) {
+    for (const w of it.title.split(/[\s,.;:!?()«»"'’/|–—-]+/)) {
+      if (w.length <= last.length) continue;
+      if (norm(w.slice(0, last.length)) !== nl) continue;
+      counts.set(w, (counts.get(w) ?? 0) + 1);
+    }
+  }
+  let best: string | null = null;
+  for (const [w, n] of counts) {
+    if (!best || n > (counts.get(best) ?? 0) || (n === counts.get(best) && w.length < best.length)) best = w;
+  }
+  return best ? { text: best.slice(last.length), word: true } : null;
+}
+
+/** Texte grisé affiché à droite de la saisie. */
 export function titleGhost(s: UIState): string {
-  if (!s.query || s.caret !== s.query.length || s.comp.open) return "";
-  if (/\s$/.test(s.query) || /:/.test(s.query)) return "";
-  const top = flatItems(s.groups).find((i) => !i.action || i.action === "open");
-  if (!top) return "";
-  if (top.title.length <= s.query.length) return "";
-  const head = top.title.slice(0, s.query.length);
-  if (norm(head) !== norm(s.query)) return "";
-  return top.title.slice(s.query.length);
+  return ghostInfo(s)?.text ?? "";
 }
 
 export function acceptGhost(): boolean {
@@ -400,11 +437,39 @@ export function acceptGhost(): boolean {
     acceptCompletion(0);
     return true;
   }
-  const g = titleGhost(s);
+  const g = ghostInfo(s);
   if (!g) return false;
-  const v = s.query + g;
+  const v = s.query + g.text + (g.word ? " " : "");
   setQuery(v, v.length);
   return true;
+}
+
+export function applyFilter(opKey: string, value: string): void {
+  const s = ui.get();
+  const src = sourceDef(s.source);
+  if (!src) return;
+  const v = toggleOperator(s.query, src, opKey, value);
+  ui.set({ mode: "search" });
+  setQuery(v, v.length);
+  focusInput();
+}
+
+export function clearFilter(opKey: string): void {
+  const s = ui.get();
+  const src = sourceDef(s.source);
+  if (!src) return;
+  const v = removeOperator(s.query, src, opKey);
+  setQuery(v, v.length);
+  focusInput();
+}
+
+/** Ajoute « clé: » en fin de barre : les valeurs possibles s'affichent aussitôt. */
+export function insertOperator(alias: string): void {
+  const s = ui.get();
+  const base = s.query && !/\s$/.test(s.query) ? s.query + " " : s.query;
+  const v = `${base}${alias}:`;
+  setQuery(v, v.length);
+  focusInput();
 }
 
 export function toggleChip(chip: Chip): void {

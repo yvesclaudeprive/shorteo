@@ -18,7 +18,7 @@
   /* Thème sombre (par défaut) */
   color-scheme: dark;
   --glass: rgba(18, 20, 26, 0.6);
-  --glass-strong: rgba(30, 33, 41, 0.94);
+  --glass-strong: rgba(30, 33, 41, 0.985);
   --layer: rgba(255, 255, 255, 0.055);
   --layer-hover: rgba(255, 255, 255, 0.085);
   --layer-active: rgba(255, 255, 255, 0.13);
@@ -48,12 +48,13 @@
   --tone-amber: #fbbf24;
   --tone-violet: #c4b5fd;
   --tool: var(--accent);
+  --yateo-red: #e30613;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
   --glass: rgba(244, 246, 250, 0.7);
-  --glass-strong: rgba(255, 255, 255, 0.97);
+  --glass-strong: rgba(255, 255, 255, 0.99);
   --layer: rgba(255, 255, 255, 0.62);
   --layer-hover: rgba(255, 255, 255, 0.85);
   --layer-active: rgba(255, 255, 255, 1);
@@ -733,6 +734,7 @@ a:hover {
 /* Autocomplétion */
 
 .popover {
+  backdrop-filter: blur(24px);
   position: absolute;
   z-index: 30;
   top: 60px;
@@ -810,7 +812,184 @@ a:hover {
   gap: 6px;
   height: 44px;
   padding: 0 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* Filtres déroulants */
+
+.fchip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border-radius: 99px;
+  background: var(--layer);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+
+.fchip:hover,
+.fchip.open {
+  background: var(--layer-hover);
+}
+
+.fchip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 10px 0 12px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.fchip:hover .fchip-main,
+.fchip.open .fchip-main {
+  color: var(--text);
+}
+
+.fchip.on {
+  background: color-mix(in srgb, var(--tool) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 55%, transparent);
+}
+
+.fchip.on .fchip-main {
+  color: var(--text);
+  padding-right: 4px;
+}
+
+.fchip-label {
+  white-space: nowrap;
+}
+
+.fchip.on .fchip-label {
+  color: var(--muted);
+}
+
+.fchip-value {
+  font-weight: 700;
+  max-width: 160px;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fchip-x {
+  width: 22px;
+  height: 22px;
+  margin-right: 3px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.fchip-x:hover {
+  color: var(--text);
+  background: var(--layer-active);
+}
+
+.chip {
+  flex: none;
+}
+
+.chip-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-style: dashed;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--stroke-strong);
+}
+
+.fmenu {
+  backdrop-filter: blur(24px);
+  position: fixed;
+  z-index: 40;
+  width: 300px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-lg);
+  background: var(--glass-strong);
+  box-shadow:
+    inset 0 0 0 1px var(--stroke-strong),
+    var(--shadow-pop);
+  overflow: hidden;
+  animation: rise 0.12s var(--ease);
+}
+
+.fmenu-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  color: var(--faint);
+  border-bottom: 1px solid var(--stroke);
+}
+
+.fmenu-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.fmenu-list {
+  overflow-y: auto;
+  padding: 5px;
+}
+
+.fmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.fmenu-item.sel {
+  background: color-mix(in srgb, var(--tool) 18%, transparent);
+}
+
+.fmenu-label {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fmenu-detail {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+}
+
+.fmenu-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--faint);
 }
 
 .chip {
@@ -1525,6 +1704,75 @@ a:hover {
 .steps b {
   color: var(--text);
   font-weight: 650;
+}
+
+.steps.detailed {
+  gap: 12px;
+}
+
+.steps.detailed li > b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.steps.detailed li > span {
+  display: block;
+  line-height: 1.5;
+}
+
+.checks {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--r-md);
+  background: var(--layer);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+}
+
+.checks li {
+  display: grid;
+  grid-template-columns: 22px 170px 1fr;
+  align-items: start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+}
+
+.check-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.checks li.ok .check-dot {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.checks li.ko .check-dot {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 16%, transparent);
+}
+
+.check-label {
+  font-weight: 650;
+}
+
+.check-msg {
+  color: var(--muted);
+  min-width: 0;
+}
+
+.checks li.ko .check-msg {
+  color: var(--text);
 }
 
 .field {

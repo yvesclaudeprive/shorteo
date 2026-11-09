@@ -23,7 +23,7 @@ export function TopActions() {
         ? `Index à jour (${relativeDate(sync.last)}) — Ctrl+R pour synchroniser`
         : "Ctrl+R pour synchroniser";
   return (
-    <div className="top-actions" data-tauri-drag-region>
+    <div className="top-actions">
       <button className={`sync-pill ${sync.errors.length ? "warn" : ""}`} title={title} onClick={() => void syncAll(false)}>
         {sync.running ? (
           <LoaderCircle size={13} className="spin" />

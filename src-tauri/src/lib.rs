@@ -24,7 +24,10 @@ use tauri_plugin_opener::OpenerExt;
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 
 /// Hôtes autorisés pour les requêtes HTTP (aucune autre destination possible).
-const ALLOWED_HOST_SUFFIXES: &[&str] = &["api.notion.com", ".pipedrive.com", ".googleapis.com"];
+const ALLOWED_HOST_SUFFIXES: &[&str] = &[".notion.com", ".pipedrive.com", ".googleapis.com"];
+
+/** Outils MCP Notion autorisés : uniquement de la lecture. */
+const NOTION_MCP_READ_TOOLS: &[&str] = &["notion-search", "notion-fetch"];
 
 /// Schémas autorisés à l'ouverture (sites web + applications).
 const ALLOWED_SCHEMES: &[&str] = &[
@@ -420,6 +423,7 @@ struct HttpRes {
     status: u16,
     body: String,
     retry_after: Option<String>,
+    headers: HashMap<String, String>,
 }
 
 fn host_allowed(url: &str) -> bool {
@@ -434,26 +438,61 @@ fn host_allowed(url: &str) -> bool {
     }
 }
 
-/// Lecture seule garantie : seules les requêtes GET sont permises, à deux exceptions
-/// qui ne modifient rien : la recherche Notion (POST /v1/search) et l'échange de jetons
-/// de connexion Google (POST /token). Toute autre écriture est refusée ici, quel que
+/// Lecture seule garantie : seules les requêtes GET sont permises, plus quelques POST
+/// qui ne modifient rien : la recherche Notion (API), la connexion (jetons, enregistrement
+/// du client OAuth) et, pour Notion MCP, uniquement les messages de session et les outils
+/// de lecture (recherche, consultation). Toute autre écriture est refusée ici, quel que
 /// soit le jeton utilisé (y compris un jeton Pipedrive ayant des droits d'écriture).
-fn method_allowed(method: &reqwest::Method, url: &str) -> bool {
+fn method_allowed(method: &reqwest::Method, url: &str, body: Option<&str>) -> bool {
     if method == reqwest::Method::GET {
         return true;
     }
     if method != reqwest::Method::POST {
         return false;
     }
-    match reqwest::Url::parse(url) {
-        Ok(u) => {
-            let host = u.host_str().unwrap_or("").to_lowercase();
-            let path = u.path();
-            (host == "api.notion.com" && path == "/v1/search")
-                || (host == "oauth2.googleapis.com" && path == "/token")
-        }
-        Err(_) => false,
+    let u = match reqwest::Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let host = u.host_str().unwrap_or("").to_lowercase();
+    let path = u.path().trim_end_matches('/');
+    if host == "oauth2.googleapis.com" {
+        return path == "/token";
     }
+    if host.ends_with(".notion.com") {
+        if path.ends_with("/token") || path.ends_with("/register") {
+            return true;
+        }
+        if host == "api.notion.com" && path == "/v1/search" {
+            return true;
+        }
+        if path == "/mcp" {
+            return mcp_body_is_read_only(body.unwrap_or(""));
+        }
+    }
+    false
+}
+
+fn mcp_body_is_read_only(body: &str) -> bool {
+    let v: serde_json::Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let msgs: Vec<&serde_json::Value> = match &v {
+        serde_json::Value::Array(a) => a.iter().collect(),
+        other => vec![other],
+    };
+    !msgs.is_empty()
+        && msgs.iter().all(|m| match m.get("method").and_then(|x| x.as_str()) {
+            Some("initialize") | Some("notifications/initialized") | Some("tools/list") | Some("ping") => true,
+            Some("tools/call") => m
+                .get("params")
+                .and_then(|p| p.get("name"))
+                .and_then(|n| n.as_str())
+                .map(|n| NOTION_MCP_READ_TOOLS.contains(&n))
+                .unwrap_or(false),
+            _ => false,
+        })
 }
 
 #[tauri::command]
@@ -463,7 +502,7 @@ async fn http_request(state: State<'_, AppState>, req: HttpReq) -> Result<HttpRe
     }
     let method = reqwest::Method::from_bytes(req.method.to_uppercase().as_bytes())
         .map_err(|e| e.to_string())?;
-    if !method_allowed(&method, &req.url) {
+    if !method_allowed(&method, &req.url, req.body.as_deref()) {
         return Err("Action refusée : Shorteo fonctionne en lecture seule".into());
     }
     let mut rb = state
@@ -485,11 +524,18 @@ async fn http_request(state: State<'_, AppState>, req: HttpReq) -> Result<HttpRe
         .get("retry-after")
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
+    let mut headers = HashMap::new();
+    for name in ["mcp-session-id", "content-type", "www-authenticate"] {
+        if let Some(v) = res.headers().get(name).and_then(|v| v.to_str().ok()) {
+            headers.insert(name.to_string(), v.to_string());
+        }
+    }
     let body = res.text().await.map_err(|e| e.to_string())?;
     Ok(HttpRes {
         status,
         body,
         retry_after,
+        headers,
     })
 }
 
@@ -768,6 +814,19 @@ fn import_history_blocking(path: &str, kind: &str) -> Result<Vec<Conversation>, 
     Ok(out)
 }
 
+/// Lit un petit fichier .json choisi par l'utilisateur (fichier d'identifiants Google).
+#[tauri::command]
+fn read_json_file(path: String) -> Result<String, String> {
+    if !path.to_lowercase().ends_with(".json") {
+        return Err("Choisissez un fichier .json".into());
+    }
+    let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.len() > 64 * 1024 {
+        return Err("Fichier trop volumineux".into());
+    }
+    fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn import_ai_history(path: String, kind: String) -> Result<Vec<Conversation>, String> {
     tauri::async_runtime::spawn_blocking(move || import_history_blocking(&path, &kind))
@@ -935,8 +994,37 @@ pub fn run() {
             http_request,
             oauth_prepare,
             oauth_wait,
+            read_json_file,
             import_ai_history
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de Shorteo");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lecture_seule() {
+        let get = reqwest::Method::GET;
+        let post = reqwest::Method::POST;
+        let put = reqwest::Method::PUT;
+        assert!(method_allowed(&get, "https://yateo.pipedrive.com/api/v2/deals", None));
+        assert!(!method_allowed(&post, "https://yateo.pipedrive.com/api/v2/deals", Some("{}")));
+        assert!(!method_allowed(&put, "https://api.notion.com/v1/pages/x", None));
+        assert!(method_allowed(&post, "https://api.notion.com/v1/search", Some("{}")));
+        assert!(!method_allowed(&post, "https://api.notion.com/v1/pages", Some("{}")));
+        assert!(method_allowed(&post, "https://oauth2.googleapis.com/token", None));
+        assert!(!method_allowed(&post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send", None));
+        assert!(method_allowed(&post, "https://mcp.notion.com/token", None));
+        assert!(method_allowed(&post, "https://mcp.notion.com/register", None));
+        let search = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"notion-search","arguments":{"query":"x"}}}"#;
+        let create = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"notion-create-pages","arguments":{}}}"#;
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(search)));
+        assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(init)));
+        assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some(create)));
+        assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some("pas du json")));
+    }
 }

@@ -122,12 +122,17 @@ export interface SourceDef {
   color: string;
   placeholder: string;
   operators: OperatorDef[];
+  /** Filtres affichés en menus déroulants sous la barre (clés d'opérateurs) */
+  filterBar?: string[];
+  /** Raccourcis de filtres (pastilles) pour les opérateurs hors menus */
   chips: Chip[];
   configured(): boolean;
   /** Recherche instantanée dans l'index local */
   localSearch?(q: ParsedQuery, limit: number): ResultItem[];
   /** Recherche en direct dans l'outil */
   liveSearch?(q: ParsedQuery, limit: number): Promise<ResultItem[]>;
+  /** Délai avant la recherche en direct (ms) */
+  liveDelay?(): number;
   /** Doit-on lancer la recherche en direct pour cette requête ? */
   wantsLive?(q: ParsedQuery): boolean;
   /** Résultats quand la barre est vide */

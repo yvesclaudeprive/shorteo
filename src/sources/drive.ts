@@ -221,6 +221,7 @@ export const driveSource: SourceDef = {
           .map((i) => ({ value: i.title })),
     },
   ],
+  filterBar: ["type", "owner", "modifie", "dossier", "is"],
   chips: [
     { label: "Docs", op: "type", value: "doc" },
     { label: "Sheets", op: "type", value: "sheet" },

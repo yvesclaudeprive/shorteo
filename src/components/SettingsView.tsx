@@ -1,3 +1,4 @@
+import { dragHandle } from "../app/drag";
 import { useEffect, useState, type ReactNode, type KeyboardEvent } from "react";
 import {
   ArrowLeft,
@@ -21,8 +22,9 @@ import { deleteSecret, getSecret, setSecret } from "../app/secrets";
 import { platform } from "../app/platform";
 import { fullDate, relativeDate } from "../app/format";
 import { testNotion } from "../sources/notion";
+import { connectNotionMcp, disconnectNotionMcp, testNotionMcp } from "../sources/notion-mcp";
 import { testPipedrive } from "../sources/pipedrive";
-import { connectGoogle, disconnectGoogle, gapi } from "../sources/google";
+import { connectGoogle, disconnectGoogle, gapi, parseClientJson, testGoogle, type CheckResult } from "../sources/google";
 import { superhumanLinks } from "../sources/mail";
 import { importHistory } from "../sources/ai";
 import type { SourceId } from "../sources/types";
@@ -274,39 +276,139 @@ function General() {
 function NotionTab() {
   const st = useStore(settingsStore);
   const s = useStore(ui);
+  useStore(indexVersion);
+  const [busy, setBusy] = useState(false);
   const notionErrors = s.sync.errors.filter((e) => e.startsWith("Notion"));
-  const connect = async () => {
+  const userList = Object.entries((getIndex("notion").meta.users as Record<string, string> | undefined) ?? {});
+
+  const connectFull = async () => {
+    setBusy(true);
+    try {
+      toast("Validez l'accès dans votre navigateur…", "info", 10000);
+      await connectNotionMcp();
+      updateSettings({ connected: { ...settingsStore.get().connected, notionMcp: true } });
+      toast(await testNotionMcp(), "success", 6000);
+    } catch (e) {
+      toast(errorText(e), "error", 12000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectToken = async () => {
     const res = await testNotion();
-    updateSettings({ connected: { ...st.connected, notion: true } });
-    toast(res.message, res.ok ? "success" : "info", res.ok ? 4000 : 12000);
+    updateSettings({ connected: { ...settingsStore.get().connected, notion: true } });
+    toast(res.message, res.ok ? "success" : "info", res.ok ? 4000 : 14000);
     void syncAll(true);
   };
+
   return (
     <div className="tab">
       <h2>
         <SourceTile id="notion" size={22} /> Notion
       </h2>
-      <Status ok={st.connected.notion}>
-        {st.connected.notion ? `Connecté · ${getIndex("notion").items.length.toLocaleString("fr-FR")} pages indexées` : "Non connecté"}
-      </Status>
-      {notionErrors.length > 0 && <div className="errors">{notionErrors.join(" — ")}</div>}
+      <p className="lead small">
+        Deux connexions complémentaires. La <b>recherche complète</b> fouille tout votre Notion, titres et contenu, avec
+        vos propres droits. L'<b>index instantané</b> affiche les titres dès la première lettre tapée. Les deux sont en
+        lecture seule.
+      </p>
+
+      <h3>1. Recherche complète (recommandée)</h3>
+      <Status ok={st.connected.notionMcp}>{st.connected.notionMcp ? "Connectée" : "Non connectée"}</Status>
       <ol className="steps">
         <li>
-          Ouvrez <Link href="https://www.notion.so/profile/integrations">notion.so/profile/integrations</Link> →{" "}
-          <b>Nouvelle intégration</b> (type <b>Interne</b>, nom « Shorteo »).
+          Cliquez sur <b>Se connecter à Notion</b> : votre navigateur s'ouvre sur Notion.
         </li>
         <li>
-          Capacités : cochez <b>Lire le contenu</b> et <b>Lire les informations des utilisateurs</b>.
-        </li>
-        <li>
-          Copiez le <b>secret d'intégration interne</b> et collez-le ci-dessous.
-        </li>
-        <li>
-          Dans Notion, sur chaque page principale à rendre cherchable : <b>•••</b> → <b>Connexions</b> → ajoutez « Shorteo ».
-          Les sous-pages suivent automatiquement.
+          Choisissez l'espace de travail Yateo, puis <b>Autoriser l'accès</b>. Revenez ici : c'est terminé.
         </li>
       </ol>
-      <SecretInput label="Secret d'intégration" secretKey="notion_token" placeholder="ntn_…" onSave={connect} />
+      <div className="row-buttons">
+        <button className="btn primary" disabled={busy} onClick={() => void connectFull()}>
+          {busy ? <LoaderCircle size={14} className="spin" /> : <KeyRound size={14} />}
+          {st.connected.notionMcp ? "Reconnecter Notion" : "Se connecter à Notion"}
+        </button>
+        {st.connected.notionMcp && (
+          <button
+            className="btn"
+            onClick={async () => {
+              await disconnectNotionMcp();
+              updateSettings({ connected: { ...settingsStore.get().connected, notionMcp: false } });
+            }}
+          >
+            Déconnecter
+          </button>
+        )}
+      </div>
+
+      <h3>2. Index instantané des titres (facultatif)</h3>
+      <Status ok={st.connected.notion}>
+        {st.connected.notion
+          ? `Connecté · ${getIndex("notion").items.length.toLocaleString("fr-FR")} pages indexées`
+          : "Non connecté"}
+      </Status>
+      {notionErrors.length > 0 && <div className="errors">{notionErrors.join(" — ")}</div>}
+      <ol className="steps detailed">
+        <li>
+          <b>Créer l'intégration</b>
+          <span>
+            Ouvrez <Link href="https://www.notion.so/profile/integrations">notion.so/profile/integrations</Link> →{" "}
+            <b>Nouvelle intégration</b> : type <b>Interne</b>, nom « Shorteo », espace de travail Yateo.
+          </span>
+        </li>
+        <li>
+          <b>Capacités</b>
+          <span>
+            Cochez uniquement <b>Lire le contenu</b> et <b>Lire les informations des utilisateurs</b> (nécessaire pour le
+            filtre « Créé par »). Enregistrez.
+          </span>
+        </li>
+        <li>
+          <b>Donner accès aux pages, en une fois</b>
+          <span>
+            Dans la même page, onglet <b>Accès au contenu</b> (Content access) → <b>Modifier l'accès</b> : cochez les
+            pages principales de chaque espace (Pôle Conception, Pôle Biz Dev, Rétention…). Les sous-pages suivent
+            automatiquement. Sans cette étape, l'index reste vide.
+          </span>
+        </li>
+        <li>
+          <b>Copier la clé</b>
+          <span>
+            Onglet <b>Configuration</b> → <b>Secret d'intégration interne</b> → Afficher → Copier, puis collez-la
+            ci-dessous.
+          </span>
+        </li>
+      </ol>
+      <SecretInput label="Secret d'intégration" secretKey="notion_token" placeholder="ntn_…" onSave={connectToken} />
+      {st.connected.notion && (
+        <div className="row-buttons">
+          <button className="btn" onClick={() => void connectToken().catch((e) => toast(errorText(e), "error", 8000))}>
+            <RefreshCw size={14} /> Tester et resynchroniser
+          </button>
+          <button
+            className="btn"
+            onClick={async () => {
+              await deleteSecret("notion_token");
+              updateSettings({ connected: { ...settingsStore.get().connected, notion: false } });
+              setIndex("notion", [], {});
+            }}
+          >
+            Déconnecter
+          </button>
+        </div>
+      )}
+
+      <h3>Réglages</h3>
+      <Field label="Vous dans Notion" hint="Sert au filtre « Créé par : Moi ». La liste vient de l'index instantané.">
+        <select value={st.notionMe} onChange={(e) => updateSettings({ notionMe: e.target.value })}>
+          <option value="">— Choisir —</option>
+          {userList.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Au clic sur un résultat">
         <OpenModeSelect app="Notion" value={st.notionOpen} onChange={(v) => updateSettings({ notionOpen: v })} />
       </Field>
@@ -316,23 +418,6 @@ function NotionTab() {
       >
         <input value={st.notionSearchUrl} placeholder="(vide)" onChange={(e) => updateSettings({ notionSearchUrl: e.target.value })} />
       </Field>
-      {st.connected.notion && (
-        <div className="row-buttons">
-          <button className="btn" onClick={() => void connect().catch((e) => toast(errorText(e), "error", 6000))}>
-            <RefreshCw size={14} /> Tester et resynchroniser
-          </button>
-          <button
-            className="btn"
-            onClick={async () => {
-              await deleteSecret("notion_token");
-              updateSettings({ connected: { ...st.connected, notion: false } });
-              setIndex("notion", [], {});
-            }}
-          >
-            Déconnecter
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -398,65 +483,173 @@ function PipedriveTab() {
   );
 }
 
+function Checks({ results }: { results: CheckResult[] }) {
+  return (
+    <ul className="checks">
+      {results.map((r) => (
+        <li key={r.label} className={r.ok ? "ok" : "ko"}>
+          <span className="check-dot">{r.ok ? <Check size={12} /> : "!"}</span>
+          <span className="check-label">{r.label}</span>
+          <span className="check-msg">
+            {r.message}
+            {r.fixUrl && (
+              <>
+                {" "}
+                <Link href={r.fixUrl}>Ouvrir</Link>
+              </>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function GoogleTab() {
   const st = useStore(settingsStore);
   const [cid, setCid] = useState("");
   const [secret, setSecretValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checks, setChecks] = useState<CheckResult[] | null>(null);
+  const [secretSaved, setSecretSaved] = useState(false);
   useEffect(() => {
     void getSecret("google_client_id").then((v) => v && setCid(v));
+    void getSecret("google_client_secret").then((v) => setSecretSaved(!!v));
   }, []);
+
+  const importJson = async () => {
+    try {
+      const path = await platform.pickJsonFile();
+      if (!path) return;
+      const { clientId, clientSecret } = await parseClientJson(await platform.readJsonFile(path));
+      setCid(clientId);
+      setSecretValue(clientSecret);
+      toast("Fichier importé : cliquez maintenant sur « Se connecter avec Google »", "success", 6000);
+    } catch (e) {
+      toast(errorText(e), "error", 8000);
+    }
+  };
+
+  const runChecks = async () => {
+    setChecking(true);
+    try {
+      setChecks(await testGoogle());
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const connect = async () => {
     const storedSecret = secret || (await getSecret("google_client_secret")) || "";
     if (!cid.trim() || !storedSecret.trim()) {
-      toast("Renseignez l'ID client et le code secret", "error");
+      toast("Importez le fichier JSON du client, ou collez l'ID client et le code secret", "error", 6000);
+      return;
+    }
+    if (!cid.trim().endsWith(".apps.googleusercontent.com")) {
+      toast("L'ID client doit se terminer par .apps.googleusercontent.com", "error", 6000);
       return;
     }
     setBusy(true);
     try {
-      toast("Validez l'accès dans votre navigateur…", "info", 8000);
+      toast("Validez l'accès dans votre navigateur…", "info", 10000);
       const email = await connectGoogle(cid, storedSecret);
       updateSettings({ connected: { ...st.connected, google: true }, mailAccount: email });
       setSecretValue("");
+      setSecretSaved(true);
       toast(`Connecté : ${email}`, "success");
       void syncAll(true);
+      await runChecks();
     } catch (e) {
-      toast(errorText(e), "error", 8000);
+      const msg = errorText(e);
+      toast(
+        /redirect_uri_mismatch/i.test(msg)
+          ? "Mauvais type de client : il faut un client « Application de bureau »."
+          : /access_denied/i.test(msg)
+            ? "Accès refusé : acceptez toutes les autorisations demandées par Google."
+            : msg,
+        "error",
+        10000,
+      );
     } finally {
       setBusy(false);
     }
   };
+
   return (
     <div className="tab">
       <h2>
         <SourceTile id="drive" size={22} /> Google Drive & Mails (Gmail)
       </h2>
       <Status ok={st.connected.google}>{st.connected.google ? `Connecté : ${st.mailAccount}` : "Non connecté"}</Status>
-      <ol className="steps">
+      <p className="lead small">
+        Une seule connexion Google sert à Drive, aux mails (ouverts ensuite dans Superhuman) et à l'autocomplétion des
+        contacts. L'accès est en lecture seule. Comptez 5 minutes, une seule fois.
+      </p>
+
+      <ol className="steps detailed">
         <li>
-          Créez un projet : <Link href="https://console.cloud.google.com/projectcreate">console.cloud.google.com</Link> (nom « Shorteo »).
+          <b>Créer un projet Google Cloud</b>
+          <span>
+            Ouvrez <Link href="https://console.cloud.google.com/projectcreate">la page de création de projet</Link>,
+            connecté avec votre compte <b>{st.mailAccount || "@yateo.com"}</b>. Nom : « Shorteo », puis <b>Créer</b>.
+            Vérifiez en haut de la console que ce projet est bien sélectionné.
+          </span>
         </li>
         <li>
-          Activez les 3 API (bouton « Activer ») :{" "}
-          <Link href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Drive</Link>,{" "}
-          <Link href="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail</Link>,{" "}
-          <Link href="https://console.cloud.google.com/apis/library/people.googleapis.com">People (contacts)</Link>.
+          <b>Activer les 3 API</b> (bouton bleu « Activer » sur chaque page)
+          <span>
+            <Link href="https://console.cloud.google.com/apis/library/drive.googleapis.com">Google Drive API</Link>,{" "}
+            <Link href="https://console.cloud.google.com/apis/library/gmail.googleapis.com">Gmail API</Link>,{" "}
+            <Link href="https://console.cloud.google.com/apis/library/people.googleapis.com">People API</Link> (contacts).
+          </span>
         </li>
         <li>
-          <Link href="https://console.cloud.google.com/auth/overview">Écran de consentement</Link> : type d'utilisateur <b>Interne</b>{" "}
-          (aucune validation Google nécessaire).
+          <b>Configurer l'écran de consentement</b>
+          <span>
+            Ouvrez <Link href="https://console.cloud.google.com/auth/overview">Google Auth Platform</Link> →{" "}
+            <b>Commencer</b>. Nom de l'application : « Shorteo », e-mail d'assistance : le vôtre. Audience :{" "}
+            <b>Interne</b> (réservé à votre organisation, aucune validation Google). Coordonnées : votre e-mail. Acceptez
+            puis <b>Créer</b>.
+          </span>
         </li>
         <li>
-          <Link href="https://console.cloud.google.com/auth/clients">Clients</Link> → <b>Créer un client</b> → type{" "}
-          <b>Application de bureau</b> → copiez l'<b>ID client</b> et le <b>code secret</b>.
+          <b>Créer le client de connexion</b>
+          <span>
+            Ouvrez <Link href="https://console.cloud.google.com/auth/clients">Clients</Link> → <b>Créer un client</b> →
+            type d'application <b>Application de bureau</b> (et pas « Application Web ») → nom « Shorteo » →{" "}
+            <b>Créer</b>. Dans la fenêtre qui s'affiche, cliquez sur <b>Télécharger le fichier JSON</b> : le code secret
+            n'est montré qu'une seule fois.
+          </span>
         </li>
-        <li>Collez-les ci-dessous, puis « Se connecter avec Google » et acceptez (lecture seule).</li>
+        <li>
+          <b>Importer le fichier ici</b>, puis cliquer sur <b>Se connecter avec Google</b>
+          <span>
+            Votre navigateur s'ouvre : choisissez votre compte, puis <b>Autoriser</b>. Revenez ici : un diagnostic
+            vérifie Gmail, Drive et les contacts un par un.
+          </span>
+        </li>
       </ol>
+
+      <div className="row-buttons">
+        <button className="btn primary" onClick={() => void importJson()}>
+          <Upload size={14} /> Importer le fichier JSON du client
+        </button>
+        <span className="muted small">ou collez les deux valeurs ci-dessous</span>
+      </div>
       <Field label="ID client">
-        <input value={cid} placeholder="xxxxxxxx.apps.googleusercontent.com" onChange={(e) => setCid(e.target.value)} />
+        <input value={cid} placeholder="xxxxxxxx.apps.googleusercontent.com" onChange={(e) => setCid(e.target.value.trim())} />
       </Field>
-      <Field label="Code secret du client" hint="Stocké dans le coffre-fort Windows.">
-        <input type="password" value={secret} placeholder="GOCSPX-… (laisser vide si déjà enregistré)" onChange={(e) => setSecretValue(e.target.value)} />
+      <Field
+        label="Code secret du client"
+        hint={secretSaved ? <span className="ok"><Check size={12} /> Déjà enregistré dans le coffre-fort Windows</span> : "Stocké dans le coffre-fort Windows."}
+      >
+        <input
+          type="password"
+          value={secret}
+          placeholder={secretSaved ? "•••••••• (déjà enregistré)" : "GOCSPX-…"}
+          onChange={(e) => setSecretValue(e.target.value.trim())}
+        />
       </Field>
       <div className="row-buttons">
         <button className="btn primary" disabled={busy} onClick={() => void connect()}>
@@ -464,18 +657,45 @@ function GoogleTab() {
           {st.connected.google ? "Reconnecter Google" : "Se connecter avec Google"}
         </button>
         {st.connected.google && (
-          <button
-            className="btn"
-            onClick={async () => {
-              await disconnectGoogle();
-              updateSettings({ connected: { ...st.connected, google: false } });
-              setIndex("drive", [], {});
-            }}
-          >
-            Déconnecter
-          </button>
+          <>
+            <button className="btn" disabled={checking} onClick={() => void runChecks()}>
+              {checking ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />} Vérifier les accès
+            </button>
+            <button
+              className="btn"
+              onClick={async () => {
+                await disconnectGoogle();
+                updateSettings({ connected: { ...st.connected, google: false } });
+                setIndex("drive", [], {});
+                setChecks(null);
+              }}
+            >
+              Déconnecter
+            </button>
+          </>
         )}
       </div>
+      {checks && <Checks results={checks} />}
+
+      <h3>En cas de problème</h3>
+      <ul className="steps">
+        <li>
+          <b>« Accès bloqué » ou « application non autorisée »</b> : l'administration Google Workspace bloque les
+          applications. Dans <Link href="https://admin.google.com/ac/owl/list?tab=configuredApps">Admin → Sécurité → Commandes des API</Link>,
+          autorisez les applications internes, ou ajoutez l'ID client comme application de confiance.
+        </li>
+        <li>
+          <b>« redirect_uri_mismatch »</b> : le client n'est pas de type « Application de bureau ». Recréez-le avec ce type.
+        </li>
+        <li>
+          <b>« API non activée »</b> : le diagnostic donne le lien direct vers l'API à activer.
+        </li>
+        <li>
+          <b>Audience « Interne » indisponible</b> : le projet n'est pas rattaché à l'organisation yateo.com. Recréez-le
+          en choisissant l'organisation dans le champ « Emplacement ».
+        </li>
+      </ul>
+
       <Field label="Nombre maximum de fichiers Drive indexés">
         <select value={st.driveMaxItems} onChange={(e) => updateSettings({ driveMaxItems: Number(e.target.value) })}>
           <option value={20000}>20 000</option>
@@ -688,14 +908,14 @@ export function SettingsView() {
   const tab = s.settingsTab;
   return (
     <div className="view settings-view">
-      <header className="top" data-tauri-drag-region>
+      <header className="top" onMouseDown={dragHandle}>
         <button className="back" onClick={() => closeSettings()}>
           <ArrowLeft size={15} /> Retour <kbd>Échap</kbd>
         </button>
-        <span className="top-title" data-tauri-drag-region>
+        <span className="top-title">
           Paramètres
         </span>
-        <span className="brand-mini" data-tauri-drag-region>
+        <span className="brand-mini">
           <ShorteoLogo size={16} /> Shorteo
         </span>
         <MinimizeButton />

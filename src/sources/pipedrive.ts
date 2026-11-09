@@ -276,6 +276,7 @@ export const pipedriveSource: SourceDef = {
     },
     { key: "champ", strict: true, aliases: ["champ", "field"], label: "Chercher dans le champ", values: () => FIELD_VALUES },
   ],
+  filterBar: ["type", "statut", "etape", "owner", "champ"],
   chips: [
     { label: "Affaires", op: "type", value: "deal" },
     { label: "Contacts", op: "type", value: "person" },

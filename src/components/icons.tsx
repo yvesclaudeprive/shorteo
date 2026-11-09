@@ -45,7 +45,7 @@ const YATEO_PATHS = (
 export function ShorteoLogo({ size = 20, className = "yateo-logo" }: { size?: number; className?: string }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 40 40" aria-label="Shorteo" role="img">
-      <g fill="currentColor" transform="translate(1.422 1.429)">
+      <g fill="var(--yateo-red)" transform="translate(1.422 1.429)">
         {YATEO_PATHS}
       </g>
       <line x1="25.4" y1="25.4" x2="35.2" y2="35.2" stroke="currentColor" strokeWidth="5.6" strokeLinecap="round" />

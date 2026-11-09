@@ -16,11 +16,14 @@ export interface Settings {
   lastSource: string;
   connected: {
     notion: boolean;
+    notionMcp: boolean;
     pipedrive: boolean;
     google: boolean;
   };
   pipedriveDomain: string;
   mailAccount: string;
+  /** Votre identifiant d'utilisateur Notion (filtre « Créé par : Moi ») */
+  notionMe: string;
   notionOpen: OpenMode;
   superhumanOpen: OpenMode;
   claudeOpen: OpenMode;
@@ -38,9 +41,10 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "auto",
   syncMinutes: 2,
   lastSource: "all",
-  connected: { notion: false, pipedrive: false, google: false },
+  connected: { notion: false, notionMcp: false, pipedrive: false, google: false },
   pipedriveDomain: "",
   mailAccount: "",
+  notionMe: "",
   notionOpen: "app-if-running",
   superhumanOpen: "app-if-running",
   claudeOpen: "app-if-installed",
@@ -62,7 +66,7 @@ export async function loadSettings(): Promise<boolean> {
   if (!raw) {
     if (platform.demo) {
       settingsStore.set({
-        connected: { notion: true, pipedrive: true, google: true },
+        connected: { notion: true, notionMcp: false, pipedrive: true, google: true },
         pipedriveDomain: "demo",
         mailAccount: "vous@exemple.fr",
       });

@@ -20,6 +20,7 @@ export interface HttpResponse {
   status: number;
   body: string;
   retry_after?: string | null;
+  headers?: Record<string, string>;
 }
 
 export interface AppsStatus {
@@ -109,6 +110,29 @@ export const platform = {
       return;
     }
     await invoke("open_url", { url });
+  },
+
+  /** Déplacement de la fenêtre (bouton de la souris enfoncé). */
+  async startDrag(): Promise<void> {
+    if (!isTauri) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startDragging();
+  },
+
+  async pickJsonFile(): Promise<string | null> {
+    if (!isTauri) return null;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    await platform.suspendBlur(true);
+    try {
+      const res = await open({ multiple: false, directory: false, filters: [{ name: "Fichier JSON", extensions: ["json"] }] });
+      return typeof res === "string" ? res : null;
+    } finally {
+      await platform.suspendBlur(false);
+    }
+  },
+
+  async readJsonFile(path: string): Promise<string> {
+    return invoke<string>("read_json_file", { path });
   },
 
   async hide(): Promise<void> {
