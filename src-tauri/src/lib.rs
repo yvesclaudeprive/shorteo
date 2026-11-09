@@ -1,4 +1,4 @@
-//! Yateo Search — partie native (Rust).
+//! Shorteo — partie native (Rust).
 //!
 //! Rôle : fenêtre flottante + raccourci global, icône dans la barre des tâches,
 //! coffre-fort Windows pour les clés, requêtes HTTP (sans contraintes CORS),
@@ -209,7 +209,7 @@ fn index_clear(app: AppHandle) -> Result<(), String> {
 #[cfg(windows)]
 mod secrets {
     use std::path::Path;
-    const SERVICE: &str = "yateo-search";
+    const SERVICE: &str = "yateo-search"; // identifiant interne conservé (clés existantes)
 
     fn entry(key: &str) -> Result<keyring::Entry, String> {
         keyring::Entry::new(SERVICE, key).map_err(|e| e.to_string())
@@ -434,6 +434,28 @@ fn host_allowed(url: &str) -> bool {
     }
 }
 
+/// Lecture seule garantie : seules les requêtes GET sont permises, à deux exceptions
+/// qui ne modifient rien : la recherche Notion (POST /v1/search) et l'échange de jetons
+/// de connexion Google (POST /token). Toute autre écriture est refusée ici, quel que
+/// soit le jeton utilisé (y compris un jeton Pipedrive ayant des droits d'écriture).
+fn method_allowed(method: &reqwest::Method, url: &str) -> bool {
+    if method == reqwest::Method::GET {
+        return true;
+    }
+    if method != reqwest::Method::POST {
+        return false;
+    }
+    match reqwest::Url::parse(url) {
+        Ok(u) => {
+            let host = u.host_str().unwrap_or("").to_lowercase();
+            let path = u.path();
+            (host == "api.notion.com" && path == "/v1/search")
+                || (host == "oauth2.googleapis.com" && path == "/token")
+        }
+        Err(_) => false,
+    }
+}
+
 #[tauri::command]
 async fn http_request(state: State<'_, AppState>, req: HttpReq) -> Result<HttpRes, String> {
     if !host_allowed(&req.url) {
@@ -441,6 +463,9 @@ async fn http_request(state: State<'_, AppState>, req: HttpReq) -> Result<HttpRe
     }
     let method = reqwest::Method::from_bytes(req.method.to_uppercase().as_bytes())
         .map_err(|e| e.to_string())?;
+    if !method_allowed(&method, &req.url) {
+        return Err("Action refusée : Shorteo fonctionne en lecture seule".into());
+    }
     let mut rb = state
         .http
         .request(method, &req.url)
@@ -482,7 +507,7 @@ fn oauth_prepare(state: State<AppState>) -> Result<u16, String> {
 
 fn oauth_page(ok: bool) -> String {
     let (title, text) = if ok {
-        ("Connexion réussie", "Yateo Search est connecté à Google. Vous pouvez fermer cet onglet.")
+        ("Connexion réussie", "Shorteo est connecté à Google. Vous pouvez fermer cet onglet.")
     } else {
         ("Connexion annulée", "La connexion à Google n'a pas abouti. Vous pouvez fermer cet onglet et réessayer.")
     };
@@ -772,7 +797,7 @@ fn read_startup_settings(app: &AppHandle) -> (String, bool, bool) {
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open_i = MenuItem::with_id(app, "open", "Ouvrir Yateo Search", true, None::<&str>)?;
+    let open_i = MenuItem::with_id(app, "open", "Ouvrir Shorteo", true, None::<&str>)?;
     let settings_i = MenuItem::with_id(app, "settings", "Paramètres", true, None::<&str>)?;
     let sync_i = MenuItem::with_id(app, "sync", "Synchroniser maintenant", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
@@ -780,7 +805,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open_i, &settings_i, &sync_i, &sep, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Yateo Search")
+        .tooltip("Shorteo")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -815,7 +840,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let http = reqwest::Client::builder()
-        .user_agent(concat!("YateoSearch/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("Shorteo/", env!("CARGO_PKG_VERSION")))
         .gzip(true)
         .build()
         .expect("client HTTP");
@@ -913,5 +938,5 @@ pub fn run() {
             import_ai_history
         ])
         .run(tauri::generate_context!())
-        .expect("erreur au lancement de Yateo Search");
+        .expect("erreur au lancement de Shorteo");
 }

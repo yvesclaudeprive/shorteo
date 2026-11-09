@@ -1,4 +1,4 @@
-# Yateo Search
+# Shorteo
 
 Un raccourci clavier, une fenêtre au-dessus de tout, et une recherche instantanée dans **Notion**, **Google Drive**, **Pipedrive**, vos **mails** (ouverts dans **Superhuman**), **ChatGPT** et **Claude**.
 
@@ -14,6 +14,8 @@ Application Windows légère (Tauri), pour usage personnel.
 - **Liens directs vers les applications** : Notion, Superhuman et Claude s'ouvrent dans l'app quand elle est disponible, sinon dans le navigateur (réglable).
 - **Toujours un bouton pour relancer la même recherche dans l'outil** (`Maj+Entrée`).
 - Aperçu détaillé du résultat sélectionné, éléments fréquents remontés en tête, thème clair ou sombre.
+- **Lecture seule garantie** : l'application ne peut faire que des lectures (requêtes GET), à deux exceptions près qui ne modifient rien : la recherche Notion et la connexion Google. C'est imposé dans la partie native, quel que soit le jeton fourni.
+- Mises à jour : chaque nouvelle version remplace la précédente (réglages, index et clés conservés). La première version de Shorteo désinstalle automatiquement l'ancienne « Yateo Search ».
 
 ## Raccourcis
 
@@ -43,7 +45,7 @@ Application Windows légère (Tauri), pour usage personnel.
 
 ## Installation
 
-1. Ouvrez l'onglet **Releases** du dépôt et téléchargez `Yateo.Search_x.y.z_x64-setup.exe`.
+1. Ouvrez l'onglet **Releases** du dépôt et téléchargez `Shorteo_x.y.z_x64-setup.exe`.
 2. Lancez-le. Windows SmartScreen peut afficher un avertissement, car l'application n'est pas signée : cliquez sur **Informations complémentaires**, puis **Exécuter quand même**.
 3. Au premier lancement, les paramètres s'ouvrent avec un guide pas à pas pour connecter chaque outil.
 

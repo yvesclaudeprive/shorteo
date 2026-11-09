@@ -1,7 +1,16 @@
-import { LoaderCircle, RefreshCw, Settings, TriangleAlert } from "lucide-react";
+import { LoaderCircle, Minus, RefreshCw, Settings, TriangleAlert } from "lucide-react";
 import { useStore } from "../app/store";
-import { openSettings, syncAll, ui } from "../app/controller";
+import { hideWindow, openSettings, syncAll, ui } from "../app/controller";
 import { relativeDate } from "../app/format";
+
+/** Masque la fenêtre (elle revient avec le raccourci ou l'icône près de l'horloge). */
+export function MinimizeButton() {
+  return (
+    <button className="icon-btn" title="Réduire (Échap) — revient avec le raccourci ou l'icône près de l'horloge" onClick={() => void hideWindow()}>
+      <Minus size={17} />
+    </button>
+  );
+}
 
 /** Indicateur de synchronisation + bouton paramètres (en haut à droite). */
 export function TopActions() {
@@ -36,6 +45,7 @@ export function TopActions() {
       <button className="icon-btn" title="Paramètres (Ctrl+,)" onClick={() => openSettings()}>
         <Settings size={16} />
       </button>
+      <MinimizeButton />
     </div>
   );
 }

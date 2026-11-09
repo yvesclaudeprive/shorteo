@@ -4,12 +4,32 @@ import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { openItem, openSettings, setSource, ui } from "../app/controller";
 import { recentItems } from "../app/usage";
+import { getIndex, indexVersion } from "../app/index-store";
 import { relativeDate } from "../app/format";
 import { platform } from "../app/platform";
 import { BAR_ORDER, SOURCES, sourceLabel } from "../sources/registry";
 import type { SourceId } from "../sources/types";
-import { ItemIcon, SourceTile } from "./icons";
+import { ItemIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
+
+const UNITS: Partial<Record<SourceId, string>> = {
+  notion: "pages",
+  drive: "fichiers",
+  pipedrive: "fiches",
+  chatgpt: "conversations",
+  claude: "conversations",
+};
+
+/** Petit indicateur d'état sous forme de chiffre (éléments indexés). */
+function barMeta(id: SourceId): string | null {
+  if (id === "all") return null;
+  if (id === "mail") {
+    const n = (getIndex("contacts").meta.list?.length as number | undefined) ?? 0;
+    return n ? `${n.toLocaleString("fr-FR")} contacts` : "en direct";
+  }
+  const n = getIndex(id).items.length;
+  return n ? `${n.toLocaleString("fr-FR")} ${UNITS[id]}` : null;
+}
 
 const PLACEHOLDERS: Record<SourceId, string> = {
   all: "Rechercher partout…",
@@ -24,6 +44,7 @@ const PLACEHOLDERS: Record<SourceId, string> = {
 export function HomeView() {
   const s = useStore(ui);
   useStore(settingsStore);
+  useStore(indexVersion);
   const recents = recentItems(5);
   const refs = useRef<Array<HTMLElement | null>>([]);
   const total = BAR_ORDER.length + recents.length;
@@ -112,7 +133,10 @@ export function HomeView() {
             Connecter
           </button>
         ) : (
-          <kbd className="bar-kbd">Alt+{index + 1}</kbd>
+          <>
+            {barMeta(id) && <span className="bar-meta">{barMeta(id)}</span>}
+            <kbd className="bar-kbd">Alt+{index + 1}</kbd>
+          </>
         )}
       </label>
     );
@@ -122,8 +146,11 @@ export function HomeView() {
     <div className="view home-view">
       <header className="top" data-tauri-drag-region>
         <div className="brand" data-tauri-drag-region>
-          <SourceTile id="all" size={22} />
-          <span data-tauri-drag-region>Yateo Search</span>
+          <ShorteoLogo size={22} />
+          <span data-tauri-drag-region>Shorteo</span>
+          <span className="brand-by" data-tauri-drag-region>
+            by Yateo
+          </span>
         </div>
         <TopActions />
       </header>

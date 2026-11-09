@@ -463,9 +463,13 @@ async function resolveUrl(source: SourceKey, web: string, app?: string, forceWeb
   return (mode === "app-if-running" ? running : installed) ? app : web;
 }
 
-async function afterOpen(): Promise<void> {
+export async function hideWindow(): Promise<void> {
   ui.set({ hiddenAt: Date.now() });
   await platform.hide();
+}
+
+async function afterOpen(): Promise<void> {
+  await hideWindow();
 }
 
 export async function runNative(source?: SourceKey, extra?: NativeTarget): Promise<void> {

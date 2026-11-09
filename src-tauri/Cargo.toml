@@ -1,11 +1,11 @@
 [package]
-name = "yateo-search"
-version = "0.1.0"
+name = "shorteo"
+version = "0.2.0"
 description = "Recherche rapide Notion, Drive, Pipedrive, Mails, ChatGPT et Claude"
 edition = "2021"
 
 [lib]
-name = "yateo_search_lib"
+name = "shorteo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -266,7 +266,7 @@ function toContacts(people: any[], into: Map<string, Contact>) {
 export const mailSource: SourceDef = {
   key: "mail",
   label: "Mails",
-  color: "#8b5cf6",
+  color: "#a78bfa",
   placeholder: "Mails (de:, à:, objet:, avec:pj, après:…)",
   operators: OPERATORS,
   chips: [

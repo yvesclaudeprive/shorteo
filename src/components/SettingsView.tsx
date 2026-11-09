@@ -26,7 +26,8 @@ import { connectGoogle, disconnectGoogle, gapi } from "../sources/google";
 import { superhumanLinks } from "../sources/mail";
 import { importHistory } from "../sources/ai";
 import type { SourceId } from "../sources/types";
-import { SourceTile } from "./icons";
+import { SourceTile, ShorteoLogo } from "./icons";
+import { MinimizeButton } from "./TopBar";
 
 const TABS: Array<{ id: string; label: string; tile?: SourceId; icon?: typeof Database }> = [
   { id: "welcome", label: "Bienvenue", icon: Sparkles },
@@ -149,7 +150,9 @@ function Status({ ok, children }: { ok: boolean; children: ReactNode }) {
 function Welcome() {
   return (
     <div className="tab">
-      <h2>Bienvenue dans Yateo Search 👋</h2>
+      <h2>
+        <ShorteoLogo size={26} /> Bienvenue dans Shorteo
+      </h2>
       <p className="lead">
         Une fenêtre, un raccourci, toutes vos recherches : Notion, Google Drive, Pipedrive, vos mails (ouverts dans
         Superhuman), ChatGPT et Claude.
@@ -261,7 +264,7 @@ function General() {
       </Field>
       <div className="danger-zone">
         <button className="btn" onClick={() => void platform.quit()}>
-          <Power size={14} /> Quitter Yateo Search
+          <Power size={14} /> Quitter Shorteo
         </button>
       </div>
     </div>
@@ -270,10 +273,12 @@ function General() {
 
 function NotionTab() {
   const st = useStore(settingsStore);
+  const s = useStore(ui);
+  const notionErrors = s.sync.errors.filter((e) => e.startsWith("Notion"));
   const connect = async () => {
-    const msg = await testNotion();
+    const res = await testNotion();
     updateSettings({ connected: { ...st.connected, notion: true } });
-    toast(msg, "success");
+    toast(res.message, res.ok ? "success" : "info", res.ok ? 4000 : 12000);
     void syncAll(true);
   };
   return (
@@ -281,11 +286,14 @@ function NotionTab() {
       <h2>
         <SourceTile id="notion" size={22} /> Notion
       </h2>
-      <Status ok={st.connected.notion}>{st.connected.notion ? "Connecté" : "Non connecté"}</Status>
+      <Status ok={st.connected.notion}>
+        {st.connected.notion ? `Connecté · ${getIndex("notion").items.length.toLocaleString("fr-FR")} pages indexées` : "Non connecté"}
+      </Status>
+      {notionErrors.length > 0 && <div className="errors">{notionErrors.join(" — ")}</div>}
       <ol className="steps">
         <li>
           Ouvrez <Link href="https://www.notion.so/profile/integrations">notion.so/profile/integrations</Link> →{" "}
-          <b>Nouvelle intégration</b> (type <b>Interne</b>, nom « Yateo Search »).
+          <b>Nouvelle intégration</b> (type <b>Interne</b>, nom « Shorteo »).
         </li>
         <li>
           Capacités : cochez <b>Lire le contenu</b> et <b>Lire les informations des utilisateurs</b>.
@@ -294,7 +302,7 @@ function NotionTab() {
           Copiez le <b>secret d'intégration interne</b> et collez-le ci-dessous.
         </li>
         <li>
-          Dans Notion, sur chaque page principale à rendre cherchable : <b>•••</b> → <b>Connexions</b> → ajoutez « Yateo Search ».
+          Dans Notion, sur chaque page principale à rendre cherchable : <b>•••</b> → <b>Connexions</b> → ajoutez « Shorteo ».
           Les sous-pages suivent automatiquement.
         </li>
       </ol>
@@ -304,7 +312,7 @@ function NotionTab() {
       </Field>
       <Field
         label="Lien de recherche Notion (avancé)"
-        hint="Laissez vide : Yateo Search ouvre Notion et copie la requête (Ctrl+K puis Ctrl+V). Variable disponible : {q}"
+        hint="Laissez vide : Shorteo ouvre Notion et copie la requête (Ctrl+K puis Ctrl+V). Variable disponible : {q}"
       >
         <input value={st.notionSearchUrl} placeholder="(vide)" onChange={(e) => updateSettings({ notionSearchUrl: e.target.value })} />
       </Field>
@@ -365,7 +373,7 @@ function PipedriveTab() {
       <SecretInput label="Jeton API personnel" secretKey="pipedrive_token" placeholder="Collez votre jeton API" onSave={connect} />
       <Field
         label="Lien de recherche Pipedrive (avancé)"
-        hint="Pipedrive n'a pas de lien de recherche officiel : par défaut, Yateo Search ouvre Pipedrive et copie la requête. Variable : {q}"
+        hint="Pipedrive n'a pas de lien de recherche officiel : par défaut, Shorteo ouvre Pipedrive et copie la requête. Variable : {q}"
       >
         <input value={st.pipedriveSearchUrl} placeholder="(vide)" onChange={(e) => updateSettings({ pipedriveSearchUrl: e.target.value })} />
       </Field>
@@ -426,7 +434,7 @@ function GoogleTab() {
       <Status ok={st.connected.google}>{st.connected.google ? `Connecté : ${st.mailAccount}` : "Non connecté"}</Status>
       <ol className="steps">
         <li>
-          Créez un projet : <Link href="https://console.cloud.google.com/projectcreate">console.cloud.google.com</Link> (nom « Yateo Search »).
+          Créez un projet : <Link href="https://console.cloud.google.com/projectcreate">console.cloud.google.com</Link> (nom « Shorteo »).
         </li>
         <li>
           Activez les 3 API (bouton « Activer ») :{" "}
@@ -529,7 +537,7 @@ function SuperhumanTab() {
       </div>
       <Field
         label="Lien de recherche Superhuman (avancé)"
-        hint="Laissez vide : Yateo Search ouvre Superhuman et copie la requête (/ puis Ctrl+V). Variables : {q} {email}"
+        hint="Laissez vide : Shorteo ouvre Superhuman et copie la requête (/ puis Ctrl+V). Variables : {q} {email}"
       >
         <input value={st.superhumanSearchUrl} placeholder="(vide)" onChange={(e) => updateSettings({ superhumanSearchUrl: e.target.value })} />
       </Field>
@@ -687,6 +695,10 @@ export function SettingsView() {
         <span className="top-title" data-tauri-drag-region>
           Paramètres
         </span>
+        <span className="brand-mini" data-tauri-drag-region>
+          <ShorteoLogo size={16} /> Shorteo
+        </span>
+        <MinimizeButton />
       </header>
       <div className="settings-body">
         <nav className="settings-nav">

@@ -173,7 +173,7 @@ function liveQuery(q: ParsedQuery): string {
 export const driveSource: SourceDef = {
   key: "drive",
   label: "Drive",
-  color: "#1fa463",
+  color: "#4c8bf5",
   placeholder: "Fichiers et dossiers Google Drive…",
   operators: [
     {

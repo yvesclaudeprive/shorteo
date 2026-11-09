@@ -1,4 +1,4 @@
-import { request, NotConfiguredError } from "../app/http";
+import { request, ApiError, NotConfiguredError } from "../app/http";
 import { getSecret } from "../app/secrets";
 import { settings, fillTemplate } from "../app/settings";
 import { getIndex, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
@@ -22,10 +22,29 @@ async function notion<T = any>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export async function testNotion(): Promise<string> {
-  const me = await notion<any>("/users/me");
-  const name = me?.bot?.workspace_name ?? me?.name ?? "Notion";
-  return `Connecté à l'espace « ${name} »`;
+/** Vérifie la clé et l'accès aux pages, avec un message clair en cas de problème. */
+export async function testNotion(): Promise<{ ok: boolean; message: string }> {
+  try {
+    const me = await notion<any>("/users/me");
+    const ws = me?.bot?.workspace_name ?? me?.name ?? "Notion";
+    const res = await notion<any>("/search", { page_size: 5 });
+    const n = (res?.results ?? []).length;
+    if (!n) {
+      return {
+        ok: false,
+        message: `Clé valide (espace « ${ws} »), mais aucune page n'est partagée avec l'intégration. Dans Notion, ouvrez vos pages principales → ••• → Connexions → ajoutez l'intégration.`,
+      };
+    }
+    return { ok: true, message: `Connecté à l'espace « ${ws} » : synchronisation en cours` };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401)
+      throw new Error("Clé refusée par Notion (401) : copiez le « secret d'intégration interne » en entier (il commence par ntn_).");
+    if (e instanceof ApiError && e.status === 403)
+      throw new Error("Notion refuse l'accès (403) : vérifiez la capacité « Lire le contenu » de l'intégration.");
+    if (e instanceof ApiError && e.status === 400)
+      throw new Error(`Notion a refusé la requête : ${e.message}`);
+    throw e;
+  }
 }
 
 const rich = (arr: any[] | undefined): string =>
@@ -119,7 +138,7 @@ async function fetchUsers(): Promise<Record<string, string>> {
 export const notionSource: SourceDef = {
   key: "notion",
   label: "Notion",
-  color: "#e6e6e6",
+  color: "#a1a1aa",
   placeholder: "Pages et bases Notion…",
   operators: [
     {

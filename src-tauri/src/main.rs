@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    yateo_search_lib::run()
+    shorteo_lib::run()
 }

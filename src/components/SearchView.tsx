@@ -20,7 +20,7 @@ import { hasOp, parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ResultItem } from "../sources/types";
-import { ItemIcon, SourceTile } from "./icons";
+import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { SearchBar } from "./SearchBar";
 import { TopActions } from "./TopBar";
 
@@ -95,7 +95,7 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
       onMouseMove={() => selectKey(itemKey(item))}
       onClick={(e) => void openItem(item, { web: e.ctrlKey })}
     >
-      <span className="row-icon">
+      <span className="row-icon" style={{ ["--kind" as string]: kindColor(item) }}>
         <ItemIcon item={item} />
       </span>
       <div className="row-main">
@@ -237,8 +237,8 @@ function Preview() {
     <aside className="preview preview-split">
       <div className="pv-scroll">
       <div className="pv-head">
-        <span className="pv-icon">
-          <ItemIcon item={item} size={26} />
+        <span className="pv-icon" style={{ ["--kind" as string]: kindColor(item) }}>
+          <ItemIcon item={item} size={24} />
         </span>
         <div>
           <div className="pv-title">{item.title}</div>

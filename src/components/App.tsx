@@ -3,6 +3,7 @@ import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { closeSettings, init, openSettings, syncAll, ui } from "../app/controller";
 import { platform } from "../app/platform";
+import { SOURCES } from "../sources/registry";
 import { HomeView } from "./HomeView";
 import { SearchView } from "./SearchView";
 import { SettingsView } from "./SettingsView";
@@ -66,7 +67,11 @@ export default function App() {
   }, []);
 
   return (
-    <div className="shell" data-mode={s.mode}>
+    <div
+      className="shell"
+      data-mode={s.mode}
+      style={{ ["--tool" as string]: s.mode === "search" && s.source !== "all" ? SOURCES[s.source].color : "var(--accent)" }}
+    >
       {s.mode === "settings" ? <SettingsView /> : s.mode === "home" ? <HomeView /> : <SearchView />}
       <Toast />
     </div>

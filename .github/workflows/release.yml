@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: "Yateo Search v__VERSION__"
-          releaseBody: "Téléchargez le fichier **Yateo.Search_…_x64-setup.exe** ci-dessous, puis lancez-le."
+          releaseName: "Shorteo v__VERSION__"
+          releaseBody: "Téléchargez le fichier **Shorteo_…_x64-setup.exe** ci-dessous, puis lancez-le."
           releaseDraft: false
           prerelease: false

@@ -15,7 +15,6 @@ import {
   MessagesSquare,
   Package,
   Presentation,
-  Search,
   Sheet,
   Sparkles,
   Target,
@@ -25,6 +24,35 @@ import {
 } from "lucide-react";
 import type { ResultItem, SourceId } from "../sources/types";
 
+const YATEO_PATHS = (
+  <>
+    <path
+      transform="translate(-19.214 -7.549)"
+      d="M43.626,12.967c.051-.011.057.023.06.06a12.591,12.591,0,0,1,2.639,6.882,13.816,13.816,0,0,1-1.56,7.659,13.347,13.347,0,0,1-11.757,7.121c-.053-.2.2-.375.3-.479a34.079,34.079,0,0,0,6.6-8.617,43.3,43.3,0,0,0,3.719-12.626"
+    />
+    <path
+      transform="translate(0 -10.46)"
+      d="M1.448,17.965a17.641,17.641,0,0,0,6.216,5.454c1.12.6,2.6,1.142,4,1.778,1.255.57,2.881,1.4,3.228,2.55.514,1.708-.468,4.38-1.016,5.632a11.206,11.206,0,0,1-1.255,2.193c-.388.528-1.094,1.521-1.793,1.6a7.682,7.682,0,0,1-2.988-.949A13.255,13.255,0,0,1,.013,24.546a13.784,13.784,0,0,1,1.434-6.581"
+    />
+    <path
+      transform="translate(-4.161 0)"
+      d="M27.494,3.935a23.807,23.807,0,0,1-4,4.007A10.6,10.6,0,0,1,17.926,10.4,12.743,12.743,0,0,1,8.842,7.584c-.546-.457-1.715-1.542-1.7-2.213C7.16,4.89,8.413,3.834,8.9,3.4A13.454,13.454,0,0,1,16.836.047,13.218,13.218,0,0,1,27.494,3.935"
+    />
+  </>
+);
+
+/** Logo Shorteo : une loupe dont le verre est le symbole Yateo (couleur héritée du texte). */
+export function ShorteoLogo({ size = 20, className = "yateo-logo" }: { size?: number; className?: string }) {
+  return (
+    <svg className={className} width={size} height={size} viewBox="0 0 40 40" aria-label="Shorteo" role="img">
+      <g fill="currentColor" transform="translate(1.422 1.429)">
+        {YATEO_PATHS}
+      </g>
+      <line x1="25.4" y1="25.4" x2="35.2" y2="35.2" stroke="currentColor" strokeWidth="5.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** Pastille colorée représentant un outil (pictogrammes génériques). */
 export function SourceTile({ id, size = 22 }: { id: SourceId; size?: number }) {
   const s = Math.round(size * 0.6);
@@ -33,7 +61,7 @@ export function SourceTile({ id, size = 22 }: { id: SourceId; size?: number }) {
     case "all":
       return (
         <span className="tile tile-all" style={style}>
-          <Search size={s} strokeWidth={2.4} />
+          <ShorteoLogo size={Math.round(size * 0.74)} className="tile-logo" />
         </span>
       );
     case "notion":
@@ -102,6 +130,14 @@ const KIND_ICONS: Record<string, { Icon: typeof File; color: string }> = {
   native: { Icon: ExternalLink, color: "var(--accent)" },
   switch: { Icon: ArrowRight, color: "var(--muted)" },
 };
+
+/** Couleur associée au type d'élément (fond teinté de la pastille d'icône). */
+export function kindColor(item: ResultItem): string {
+  if (item.kind === "ask" || item.kind === "ask-web") return item.source === "claude" ? "#e07a55" : "#10a37f";
+  if (item.kind === "native" || item.kind === "switch") return "var(--tool)";
+  const c = KIND_ICONS[item.kind]?.color;
+  return !c || c.startsWith("var(") ? "#9aa0ab" : c;
+}
 
 export function ItemIcon({ item, size = 18 }: { item: ResultItem; size?: number }) {
   if (item.kind === "ask") return <SourceTile id={item.source} size={size + 4} />;
