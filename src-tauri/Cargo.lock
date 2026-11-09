@@ -3748,7 +3748,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shorteo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "keyring",
  "reqwest 0.12.28",
@@ -3763,6 +3763,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "windows-sys 0.61.2",
  "winreg 0.55.0",
  "zip",
 ]

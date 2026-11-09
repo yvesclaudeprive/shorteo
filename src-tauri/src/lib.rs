@@ -113,6 +113,23 @@ fn toggle_window(app: &AppHandle) {
     }
 }
 
+/// La fenêtre est-elle toujours l'application au premier plan ?
+/// (Sous Windows, la zone d'affichage perd brièvement le focus pendant un déplacement :
+/// on ne masque la fenêtre que si une AUTRE application est vraiment passée devant.)
+#[cfg(windows)]
+fn is_foreground(w: &WebviewWindow) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    match w.hwnd() {
+        Ok(h) => unsafe { GetForegroundWindow() as usize == h.0 as usize },
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(windows))]
+fn is_foreground(w: &WebviewWindow) -> bool {
+    w.is_focused().unwrap_or(false)
+}
+
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     hide_window_inner(&app);
@@ -959,14 +976,26 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::Focused(false) => {
-                let app = window.app_handle();
-                let state = app.state::<AppState>();
-                let hide = *state.hide_on_blur.lock().unwrap();
-                let suspended = *state.blur_suspended.lock().unwrap();
-                if hide && !suspended {
-                    let _ = window.hide();
-                    let _ = window.emit("window-hidden", ());
-                }
+                // Vérification différée : on ne masque que si une autre application
+                // est réellement passée au premier plan (pas pendant un déplacement).
+                let app = window.app_handle().clone();
+                let label = window.label().to_string();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(160));
+                    let state = app.state::<AppState>();
+                    let hide = *state.hide_on_blur.lock().unwrap();
+                    let suspended = *state.blur_suspended.lock().unwrap();
+                    if !hide || suspended {
+                        return;
+                    }
+                    if let Some(w) = app.get_webview_window(&label) {
+                        if !w.is_visible().unwrap_or(false) || is_foreground(&w) {
+                            return;
+                        }
+                        let _ = w.hide();
+                        let _ = w.emit("window-hidden", ());
+                    }
+                });
             }
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
