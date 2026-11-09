@@ -62,4 +62,4 @@ npm run dev        # interface seule, en mode démo, dans le navigateur (http://
 npm run tauri dev  # application complète (Windows, avec Rust installé)
 ```
 
-Pour publier une nouvelle version : augmentez `version` dans `src-tauri/tauri.conf.json`, puis lancez le workflow **Installateur Windows** (onglet Actions) ou poussez un tag `vX.Y.Z`. GitHub compile l'installateur et le publie dans Releases.
+Pour publier une nouvelle version : augmentez `version` dans `src-tauri/tauri.conf.json` (et dans `src-tauri/Cargo.toml`), puis poussez sur `main`. GitHub compile automatiquement l'installateur et le publie dans Releases. Le workflow **Installateur Windows** peut aussi être lancé à la main depuis l'onglet Actions.

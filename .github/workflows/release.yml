@@ -1,9 +1,14 @@
 name: Installateur Windows
 
-# Se lance quand une version est taguée (ex. v0.1.0) ou à la main (onglet Actions).
+# Se lance quand le numéro de version change (src-tauri/tauri.conf.json),
+# quand une version est taguée (ex. v0.1.0), ou à la main (onglet Actions).
 on:
   push:
+    branches: [main]
     tags: ["v*"]
+    paths:
+      - "src-tauri/tauri.conf.json"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
