@@ -1,12 +1,14 @@
 import { dragHandle } from "../app/drag";
 import { useEffect, useRef } from "react";
-import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX } from "lucide-react";
+import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX, Phone, Mail } from "lucide-react";
 import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { indexVersion } from "../app/index-store";
 import {
   copyLink,
+  copyText,
   flatItems,
+  openContact,
   itemKey,
   openItem,
   openSettings,
@@ -19,7 +21,7 @@ import {
 import { parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
-import type { ResultItem } from "../sources/types";
+import type { ContactInfo, ResultItem } from "../sources/types";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { SearchBar } from "./SearchBar";
 import { FilterBar } from "./FilterBar";
@@ -156,6 +158,37 @@ function Results() {
   );
 }
 
+function ContactList({ list }: { list: ContactInfo[] }) {
+  if (!list.length) return null;
+  return (
+    <section className="pv-contacts">
+      <div className="pv-section-title">Coordonnées</div>
+      {list.map((c, i) => (
+        <div key={`${c.kind}-${c.value}-${i}`} className={`contact-row contact-${c.kind}`}>
+          <button
+            className="contact-main"
+            title={c.kind === "phone" ? `Appeler ${c.value}` : `Écrire à ${c.value}`}
+            onClick={() => void openContact(c)}
+          >
+            <span className="contact-icon">{c.kind === "phone" ? <Phone size={14} /> : <Mail size={14} />}</span>
+            <span className="contact-text">
+              <span className="contact-value">{c.value}</span>
+              {(c.label || c.who) && <span className="contact-label">{[c.who, c.label].filter(Boolean).join(" · ")}</span>}
+            </span>
+          </button>
+          <button
+            className="contact-copy"
+            title="Copier"
+            onClick={() => void copyText(c.value, c.kind === "phone" ? "Numéro" : "E-mail")}
+          >
+            <Copy size={13} />
+          </button>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function Preview() {
   const s = useStore(ui);
   useStore(settingsStore);
@@ -215,6 +248,7 @@ function Preview() {
         </div>
       </div>
       {item.snippet && <p className="pv-snippet">{item.snippet}</p>}
+      <ContactList list={src.contacts?.(item) ?? []} />
       <dl className="pv-details">
         {rows.map((r) => (
           <div key={r.label} className="pv-row">

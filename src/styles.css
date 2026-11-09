@@ -1413,6 +1413,111 @@ a:hover {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 30%, transparent);
 }
 
+/* Coordonnées : appeler / écrire au clic */
+
+.pv-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pv-section-title {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  margin-bottom: 2px;
+}
+
+.contact-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-md);
+  background: var(--layer);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  transition: background 0.12s;
+}
+
+.contact-row:hover {
+  background: var(--layer-hover);
+}
+
+.contact-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.contact-icon {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+}
+
+.contact-phone .contact-icon {
+  color: var(--tone-green);
+  background: color-mix(in srgb, var(--tone-green) 16%, transparent);
+}
+
+.contact-email .contact-icon {
+  color: var(--tone-violet);
+  background: color-mix(in srgb, var(--tone-violet) 16%, transparent);
+}
+
+.contact-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.contact-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.contact-label {
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-copy {
+  width: 28px;
+  height: 28px;
+  margin-right: 6px;
+  flex: none;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.contact-row:hover .contact-copy {
+  opacity: 1;
+}
+
+.contact-copy:hover {
+  color: var(--text);
+  background: var(--layer-active);
+}
+
 .pv-details {
   margin: 0;
   display: flex;

@@ -54,7 +54,7 @@ const pipedrive: ResultItem[] = [
   { id: "deal-3", kind: "deal", title: "Atelier Brun — Audit SEO", f: { st: "won", v: 6500, cur: "EUR", sgName: "Signé", orgName: "Atelier Brun" } },
   { id: "organization-1", kind: "organization", title: "Maison Lumière", f: { addr: "12 rue des Arts, Lyon" } },
   { id: "organization-2", kind: "organization", title: "Groupe Navarre", f: { addr: "Bordeaux" } },
-  { id: "person-1", kind: "person", title: "Claire Dubois", f: { orgName: "Maison Lumière", e: "claire@maison-lumiere.fr", ph: "+33 6 12 34 56 78" } },
+  { id: "person-1", kind: "person", title: "Claire Dubois", f: { orgName: "Maison Lumière", e: "claire@maison-lumiere.fr", ph: "+33 6 12 34 56 78", em: [{ v: "claire@maison-lumiere.fr", l: "work" }, { v: "c.dubois@gmail.com", l: "home" }], pm: [{ v: "+33 6 12 34 56 78", l: "mobile" }, { v: "+33 4 78 52 10 40", l: "work" }] } },
   { id: "person-2", kind: "person", title: "Marc Navarre", f: { orgName: "Groupe Navarre", e: "marc@navarre.fr" } },
   { id: "lead-a", kind: "lead", title: "Lead — Boulangerie Martin (site e-commerce)", f: { v: 9000, cur: "EUR" } },
 ].map((x, i) => ({

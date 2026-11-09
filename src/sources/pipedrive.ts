@@ -7,7 +7,7 @@ import { norm } from "../app/search";
 import { opValues } from "../app/query";
 import { platform } from "../app/platform";
 import { demoLive } from "./demo";
-import type { ParsedQuery, ResultItem, SourceDef } from "./types";
+import type { ContactInfo, ParsedQuery, ResultItem, SourceDef } from "./types";
 
 const KIND_LABEL: Record<string, string> = {
   deal: "Affaire",
@@ -63,6 +63,20 @@ const firstValue = (arr: any): string | undefined => {
   const primary = arr.find((x) => x?.primary) ?? arr[0];
   return typeof primary === "string" ? primary : primary?.value;
 };
+/** Toutes les valeurs d'un champ multiple (e-mails, téléphones), avec leur libellé. */
+const allValues = (arr: any): Array<{ v: string; l?: string }> => {
+  if (!Array.isArray(arr)) return typeof arr === "string" && arr ? [{ v: arr }] : [];
+  const out: Array<{ v: string; l?: string }> = [];
+  for (const x of arr) {
+    const v = typeof x === "string" ? x : x?.value;
+    if (v && !out.some((o) => o.v === v)) out.push({ v: String(v), l: typeof x === "object" ? x?.label : undefined });
+  }
+  // la valeur principale en premier
+  const primary = Array.isArray(arr) ? arr.find((x: any) => x?.primary)?.value : undefined;
+  if (primary) out.sort((a, b) => (a.v === primary ? -1 : b.v === primary ? 1 : 0));
+  return out;
+};
+
 const addressOf = (a: any): string | undefined => (typeof a === "string" ? a : a?.value ?? a?.formatted_address);
 
 function mk(kind: string, id: string | number, title: string, t: any, f: Record<string, any>, text?: string): ResultItem {
@@ -90,7 +104,14 @@ function fromList(kind: string, r: any): ResultItem {
         r.id,
         r.name,
         r.update_time,
-        { org: idOf(r.org_id), e: email, ph: phone, o: idOf(r.owner_id) },
+        {
+          org: idOf(r.org_id),
+          e: email,
+          ph: phone,
+          em: allValues(r.emails ?? r.email),
+          pm: allValues(r.phones ?? r.phone),
+          o: idOf(r.owner_id),
+        },
         [email, phone, nameOf(r.org_id)].filter(Boolean).join(" "),
       );
     }
@@ -144,7 +165,15 @@ function fromSearch(it: any): ResultItem | null {
         it.id,
         it.name,
         undefined,
-        { org: it.organization?.id, orgName: it.organization?.name, e: email, ph: phone, o: it.owner?.id },
+        {
+          org: it.organization?.id,
+          orgName: it.organization?.name,
+          e: email,
+          ph: phone,
+          em: allValues(it.emails),
+          pm: allValues(it.phones),
+          o: it.owner?.id,
+        },
         [email, phone, it.organization?.name].filter(Boolean).join(" "),
       );
     }
@@ -381,8 +410,6 @@ export const pipedriveSource: SourceDef = {
     if (org && item.kind !== "organization") rows.push({ label: "Organisation", value: org });
     const per = personName(item);
     if (per) rows.push({ label: "Contact", value: per });
-    if (item.f?.e) rows.push({ label: "E-mail", value: item.f.e });
-    if (item.f?.ph) rows.push({ label: "Téléphone", value: item.f.ph });
     if (item.f?.addr) rows.push({ label: "Adresse", value: item.f.addr });
     const owner = ownerName(item);
     if (owner) rows.push({ label: "Propriétaire", value: owner });
@@ -390,19 +417,35 @@ export const pipedriveSource: SourceDef = {
     return rows;
   },
 
-  secondaryActions(item) {
-    const out = [];
-    if (item.f?.e) {
-      out.push({ label: "Copier l'e-mail", run: () => platform.copy(item.f!.e) });
-      out.push({ label: "Écrire un mail", run: () => platform.openUrl(`mailto:${item.f!.e}`) });
+  contacts(item) {
+    const LABEL: Record<string, string> = { work: "Travail", home: "Domicile", mobile: "Mobile", other: "Autre" };
+    const of = (p: ResultItem, who?: string): ContactInfo[] => {
+      const em: Array<{ v: string; l?: string }> = p.f?.em?.length ? p.f.em : p.f?.e ? [{ v: p.f.e }] : [];
+      const pm: Array<{ v: string; l?: string }> = p.f?.pm?.length ? p.f.pm : p.f?.ph ? [{ v: p.f.ph }] : [];
+      return [
+        ...pm.map((x) => ({ kind: "phone" as const, value: x.v, label: x.l ? LABEL[x.l] ?? x.l : undefined, who })),
+        ...em.map((x) => ({ kind: "email" as const, value: x.v, label: x.l ? LABEL[x.l] ?? x.l : undefined, who })),
+      ];
+    };
+    const idx = getIndex("pipedrive");
+    if (item.kind === "person") return of(item);
+    if ((item.kind === "deal" || item.kind === "lead") && item.f?.per) {
+      const p = idx.byId.get(`person-${item.f.per}`);
+      return p ? of(p, p.title) : [];
     }
-    if (item.f?.ph) out.push({ label: "Copier le téléphone", run: () => platform.copy(item.f!.ph) });
-    return out;
+    if (item.kind === "organization") {
+      const id = Number(item.id.replace("organization-", ""));
+      return idx.items
+        .filter((p) => p.kind === "person" && p.f?.org === id)
+        .slice(0, 8)
+        .flatMap((p) => of(p, p.title).slice(0, 2));
+    }
+    return [];
   },
 
   async sync({ full, progress }) {
     const idx = getIndex("pipedrive");
-    const isFull = full || !idx.items.length;
+    const isFull = full || !idx.items.length || idx.meta.schema !== 2;
     const since = isFull ? undefined : new Date((idx.meta.lastSync ?? 0) - 10 * 60000).toISOString().replace(/\.\d{3}Z$/, "Z");
     const LABELS: Record<string, string> = {
       organization: "organisations",
@@ -468,6 +511,7 @@ export const pipedriveSource: SourceDef = {
       stages: Object.keys(stages).length ? stages : idx.meta.stages,
       lastSync: Date.now(),
       lastFull: isFull ? Date.now() : idx.meta.lastFull,
+      schema: 2,
     });
   },
 };

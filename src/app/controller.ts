@@ -17,7 +17,7 @@ import {
 import { norm, recencyBoost, scoreEntry, toEntry } from "./search";
 import { ALL_ORDER, BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import { loadDemoData } from "../sources/demo";
-import type { Chip, NativeTarget, ResultItem, SourceDef, SourceId, SourceKey } from "../sources/types";
+import type { Chip, ContactInfo, NativeTarget, ResultItem, SourceDef, SourceId, SourceKey } from "../sources/types";
 
 export interface Group {
   key: string;
@@ -576,6 +576,22 @@ export async function openItem(item: ResultItem, opts: { web?: boolean } = {}): 
 export async function openSelected(opts: { web?: boolean } = {}): Promise<void> {
   const it = selectedItem();
   if (it) await openItem(it, opts);
+}
+
+/** Appeler (tel:) ou écrire (mailto:) : ouvre l'application par défaut de Windows. */
+export async function openContact(c: ContactInfo): Promise<void> {
+  const url = c.kind === "phone" ? `tel:${c.value.replace(/[^\d+]/g, "")}` : `mailto:${c.value}`;
+  try {
+    await platform.openUrl(url);
+    await afterOpen();
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
+export async function copyText(text: string, what: string): Promise<void> {
+  await platform.copy(text);
+  toast(`${what} copié`, "success", 1600);
 }
 
 export async function copyLink(item: ResultItem | null = selectedItem()): Promise<void> {

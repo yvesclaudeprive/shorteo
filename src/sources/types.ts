@@ -99,6 +99,15 @@ export interface NativeTarget {
   hint?: string;
 }
 
+export interface ContactInfo {
+  kind: "email" | "phone";
+  value: string;
+  /** Travail, Mobile, Domicile… */
+  label?: string;
+  /** Personne concernée (pour une affaire ou une organisation) */
+  who?: string;
+}
+
 export interface SecondaryAction {
   label: string;
   run: () => Promise<void> | void;
@@ -145,6 +154,8 @@ export interface SourceDef {
   describe(item: ResultItem): Described;
   details(item: ResultItem): DetailRow[];
   secondaryActions?(item: ResultItem): SecondaryAction[];
+  /** Coordonnées cliquables (appeler, écrire) */
+  contacts?(item: ResultItem): ContactInfo[];
   sync?(opts: SyncOptions): Promise<void>;
   /** Suggestions pour un mot libre (ex. contacts pour les mails) */
   textCompletions?(token: string): Completion[];
