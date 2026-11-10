@@ -27,6 +27,7 @@ import { testPipedrive } from "../sources/pipedrive";
 import { connectGoogle, disconnectGoogle, gapi, parseClientJson, testGoogle, type CheckResult } from "../sources/google";
 import { superhumanLinks } from "../sources/mail";
 import { importHistory } from "../sources/ai";
+import { driveShortcuts } from "../sources/drive";
 import type { SourceId } from "../sources/types";
 import { SourceTile, ShorteoLogo } from "./icons";
 import { MinimizeButton } from "./TopBar";
@@ -505,6 +506,79 @@ function Checks({ results }: { results: CheckResult[] }) {
   );
 }
 
+function DriveShortcutsSettings() {
+  const st = useStore(settingsStore);
+  useStore(indexVersion);
+  const [name, setName] = useState("");
+  const list = driveShortcuts();
+  const suggestions = getIndex("drive")
+    .items.filter((i) => i.kind === "folder" || i.kind === "sheet" || i.kind === "doc")
+    .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
+    .slice(0, 400);
+  const add = () => {
+    const n = name.trim();
+    if (!n || st.driveFavorites.some((x) => x.toLowerCase() === n.toLowerCase())) return;
+    updateSettings({ driveFavorites: [...st.driveFavorites, n] });
+    setName("");
+  };
+  const move = (i: number, d: number) => {
+    const a = [...st.driveFavorites];
+    const j = i + d;
+    if (j < 0 || j >= a.length) return;
+    [a[i], a[j]] = [a[j], a[i]];
+    updateSettings({ driveFavorites: a });
+  };
+  return (
+    <>
+      <h3>Raccourcis en tête de la recherche Drive</h3>
+      <p className="lead small">
+        Un dossier limite la recherche à son contenu (sous-dossiers compris) ; un fichier s'ouvre directement. Les éléments
+        sont retrouvés par leur nom exact dans votre Drive.
+      </p>
+      <ul className="checks">
+        {list.map((x, i) => (
+          <li key={x.name} className={x.item ? "ok" : "ko"}>
+            <span className="check-dot">{x.item ? <Check size={12} /> : "?"}</span>
+            <span className="check-label">{x.name}</span>
+            <span className="check-msg fav-row">
+              {x.item ? (x.item.kind === "folder" ? "Dossier trouvé" : "Fichier trouvé") : "Introuvable dans l'index Drive (vérifiez le nom exact)"}
+              <span className="fav-actions">
+                <button className="icon-btn" title="Monter" onClick={() => move(i, -1)}>↑</button>
+                <button className="icon-btn" title="Descendre" onClick={() => move(i, 1)}>↓</button>
+                <button
+                  className="icon-btn"
+                  title="Retirer"
+                  onClick={() => updateSettings({ driveFavorites: st.driveFavorites.filter((n) => n !== x.name) })}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="inline" style={{ marginBottom: 16 }}>
+        <input
+          list="drive-folders"
+          value={name}
+          placeholder="Nom d'un dossier ou d'un fichier Drive"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          className="plain-input"
+        />
+        <datalist id="drive-folders">
+          {suggestions.map((i) => (
+            <option key={i.id} value={i.title} />
+          ))}
+        </datalist>
+        <button className="btn" onClick={add}>
+          Ajouter
+        </button>
+      </div>
+    </>
+  );
+}
+
 function GoogleTab() {
   const st = useStore(settingsStore);
   const [cid, setCid] = useState("");
@@ -695,6 +769,8 @@ function GoogleTab() {
           en choisissant l'organisation dans le champ « Emplacement ».
         </li>
       </ul>
+
+      <DriveShortcutsSettings />
 
       <Field label="Nombre maximum de fichiers Drive indexés">
         <select value={st.driveMaxItems} onChange={(e) => updateSettings({ driveMaxItems: Number(e.target.value) })}>

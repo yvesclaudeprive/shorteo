@@ -38,6 +38,11 @@ const drive: ResultItem[] = [
   ["d5", "Brief refonte Maison Lumière", "doc", 2 * D],
   ["d6", "Clients 2026", "folder", 20 * D],
   ["d7", "Contrat cadre Groupe Navarre.docx", "doc", 40 * D],
+  ["d8", "Clients en cours", "folder", 2 * D],
+  ["d9", "Prospects en cours", "folder", 3 * D],
+  ["d10", "Devis type", "folder", 30 * D],
+  ["d11", "Password client en cours", "sheet", 6 * D],
+  ["d12", "Password prospects en cours", "sheet", 9 * D],
 ].map(([id, title, kind, age], i) => ({
   id: id as string,
   source: "drive" as const,
@@ -45,7 +50,7 @@ const drive: ResultItem[] = [
   title: title as string,
   url: `https://drive.google.com/open?id=${id}`,
   t: now - (age as number),
-  f: { o: i % 2 ? "Paul Martin" : "Moi", me: i % 2 ? 0 : 1, p: "d6", sh: 1, v: now - (age as number) },
+  f: { o: i % 2 ? "Paul Martin" : "Moi", me: i % 2 ? 0 : 1, p: id === "d1" || id === "d5" ? "d8" : "d6", sh: 1, v: now - (age as number) },
 }));
 
 const pipedrive: ResultItem[] = [

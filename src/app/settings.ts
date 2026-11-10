@@ -33,6 +33,8 @@ export interface Settings {
   notionSearchUrl: string;
   pipedriveSearchUrl: string;
   driveMaxItems: number;
+  /** Raccourcis affichés en tête de la recherche Drive (noms de dossiers ou de fichiers) */
+  driveFavorites: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -53,6 +55,13 @@ export const DEFAULT_SETTINGS: Settings = {
   notionSearchUrl: "",
   pipedriveSearchUrl: "",
   driveMaxItems: 60000,
+  driveFavorites: [
+    "Clients en cours",
+    "Prospects en cours",
+    "Devis type",
+    "Password client en cours",
+    "Password prospects en cours",
+  ],
 };
 
 export const settingsStore = createStore<Settings>({ ...DEFAULT_SETTINGS });

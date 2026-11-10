@@ -25,6 +25,7 @@ import type { ContactInfo, ResultItem } from "../sources/types";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { SearchBar } from "./SearchBar";
 import { FilterBar } from "./FilterBar";
+import { DriveShortcuts } from "./DriveShortcuts";
 import { TopActions } from "./TopBar";
 
 function SourcePills() {
@@ -342,6 +343,7 @@ export function SearchView() {
         <TopActions />
       </header>
       <SearchBar />
+      {ui.get().source === "drive" && <DriveShortcuts />}
       <FilterBar />
       <div className="body">
         <Results />

@@ -821,6 +821,96 @@ a:hover {
   display: none;
 }
 
+/* Raccourcis Drive */
+
+.favs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.favs::-webkit-scrollbar {
+  display: none;
+}
+
+.fav {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 12px 0 6px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--layer);
+  box-shadow:
+    inset 0 1px 0 var(--highlight),
+    inset 0 0 0 1px var(--stroke);
+  transition: background 0.12s;
+}
+
+.fav:hover {
+  background: var(--layer-hover);
+}
+
+.fav.on {
+  background: color-mix(in srgb, var(--tool) 24%, var(--layer));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 60%, transparent);
+}
+
+.fav-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #e8a93a;
+  background: color-mix(in srgb, #e8a93a 18%, transparent);
+}
+
+.fav-open {
+  color: var(--faint);
+}
+
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fav-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.fav-actions .icon-btn {
+  width: 26px;
+  height: 26px;
+}
+
+.plain-input {
+  height: 36px;
+  padding: 0 11px;
+  border-radius: var(--r-md);
+  border: 0;
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1px var(--stroke-strong);
+  outline: 0;
+}
+
+.plain-input:focus {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 /* Filtres déroulants */
 
 .fchip {

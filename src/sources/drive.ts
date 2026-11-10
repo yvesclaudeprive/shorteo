@@ -1,6 +1,6 @@
 import { qs } from "../app/http";
 import { settings } from "../app/settings";
-import { getIndex, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
+import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
 import { fullDate, periodMs, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { opValues } from "../app/query";
@@ -92,6 +92,44 @@ function folderName(id?: string): string | undefined {
   return getIndex("drive").byId.get(id)?.title;
 }
 
+// --- Dossiers parents (sous-dossiers compris), mis en cache par version d'index ---
+
+let chainCache: { v: number; map: Map<string, string[]> } = { v: -1, map: new Map() };
+
+/** Noms des dossiers qui contiennent l'élément, du plus proche au plus lointain. */
+function folderChain(item: ResultItem): string[] {
+  const v = indexVersion.get().v;
+  if (chainCache.v !== v) chainCache = { v, map: new Map() };
+  const hit = chainCache.map.get(item.id);
+  if (hit) return hit;
+  const idx = getIndex("drive");
+  const out: string[] = [];
+  const seen = new Set<string>([item.id]);
+  let p = item.f?.p as string | undefined;
+  for (let i = 0; i < 15 && p && !seen.has(p); i++) {
+    seen.add(p);
+    const f = idx.byId.get(p);
+    if (!f) break;
+    out.push(f.title);
+    p = f.f?.p;
+  }
+  chainCache.map.set(item.id, out);
+  return out;
+}
+
+/** Raccourcis Drive des paramètres, retrouvés par leur nom dans l'index. */
+export function driveShortcuts(): Array<{ name: string; item?: ResultItem }> {
+  const items = getIndex("drive").items;
+  return settings().driveFavorites.map((name) => {
+    const n = norm(name.trim());
+    const matches = items.filter((i) => norm(i.title) === n);
+    const item =
+      matches.find((i) => i.kind === "folder") ??
+      matches.sort((a, b) => (b.t ?? 0) - (a.t ?? 0))[0];
+    return { name, item };
+  });
+}
+
 function owners(): Array<{ value: string; detail?: string }> {
   const count = new Map<string, { n: number; e?: string }>();
   for (const it of getIndex("drive").items) {
@@ -127,8 +165,9 @@ function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
     if (flags.includes("suivi") && !it.f?.s) return false;
     if (flags.includes("partage") && !it.f?.sh) return false;
     if (folders.length) {
-      const fn = norm(folderName(it.f?.p) ?? "");
-      if (!folders.some((f) => fn.includes(f))) return false;
+      // dans le dossier ou l'un de ses sous-dossiers
+      const chain = folderChain(it).map(norm);
+      if (!folders.some((f) => chain.some((c) => c === f || c.includes(f)))) return false;
     }
     return true;
   };
@@ -163,10 +202,6 @@ function liveQuery(q: ParsedQuery): string {
     .find((x) => x !== null);
   if (period) parts.push(`modifiedTime > '${new Date(Date.now() - period).toISOString()}'`);
   if (opValues(q, "is").includes("suivi")) parts.push("starred = true");
-  for (const d of opValues(q, "dossier")) {
-    const id = folderIdByName(d);
-    if (id) parts.push(`'${id}' in parents`);
-  }
   return parts.join(" and ");
 }
 
@@ -212,7 +247,7 @@ export const driveSource: SourceDef = {
     {
       key: "dossier",
       aliases: ["dossier", "dans", "in"],
-      label: "Dans le dossier",
+      label: "Dossier",
       values: () =>
         getIndex("drive")
           .items.filter((i) => i.kind === "folder")
@@ -250,8 +285,22 @@ export const driveSource: SourceDef = {
       includeItemsFromAllDrives: true,
       supportsAllDrives: true,
     };
-    const res = await gapi<any>(`${API}/files?${qs(params)}`);
-    const items = (res.files ?? []).map(toItem);
+    const base = liveQuery(q);
+    const queries = [base];
+    for (const d of opValues(q, "dossier")) {
+      const id = folderIdByName(d);
+      if (id) queries.push(`${base} and '${id}' in parents`);
+    }
+    const lists = await Promise.all(
+      queries.map((qq) => gapi<any>(`${API}/files?${qs({ ...params, q: qq })}`).then((r) => (r.files ?? []).map(toItem))),
+    );
+    const seen = new Set<string>();
+    const items: ResultItem[] = [];
+    for (const it of lists.flat()) {
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      items.push(it);
+    }
     upsertItems("drive", items);
     return items.filter(applyFilters(q));
   },
