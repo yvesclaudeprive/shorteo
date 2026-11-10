@@ -26,6 +26,9 @@ export interface Group {
   items: ResultItem[];
   loading?: boolean;
   error?: string;
+  /** Explication + lien vers un onglet des paramètres */
+  hint?: string;
+  hintTab?: string;
 }
 
 export interface UIState {
@@ -129,6 +132,18 @@ function nativeRow(src: SourceDef, target: NativeTarget, query: string): ResultI
   };
 }
 
+/** Explication quand Notion ne renvoie rien (connexion incomplète). */
+function emptyHint(src: SourceDef, items: ResultItem[]): Partial<Group> {
+  if (src.key !== "notion" || items.length) return {};
+  const c = settings().connected;
+  if (!c.notionMcp)
+    return {
+      hint: "Aucun résultat dans les pages partagées avec Shorteo. Pour chercher dans tout Notion (contenu compris), connectez la « Recherche complète ».",
+      hintTab: "notion",
+    };
+  return {};
+}
+
 function switchRow(key: SourceKey, count?: number): ResultItem {
   return {
     id: `switch-${key}`,
@@ -194,7 +209,9 @@ function searchOne(id: number, key: SourceKey, query: string): void {
   const local = src.localSearch?.(q, 40) ?? [];
   const native = src.actions ? null : nativeRow(src, src.nativeSearch(q), query);
   const willLive = !!src.liveSearch && (src.wantsLive?.(q) ?? true);
-  setGroups([{ key, source: key, items: [...actions, ...local, ...(native ? [native] : [])], loading: willLive }], {
+  const wrap = (list: ResultItem[]): ResultItem[] =>
+    !native ? [...actions, ...list] : src.nativeFirst ? [native, ...actions, ...list] : [...actions, ...list, native];
+  setGroups([{ key, source: key, items: wrap(local), loading: willLive }], {
     liveLoading: willLive,
   });
   if (!willLive) return;
@@ -205,16 +222,13 @@ function searchOne(id: number, key: SourceKey, query: string): void {
       const live = await src.liveSearch!(q, 25);
       if (id !== seq) return;
       const merged = merge(src, local, live, q.tokens);
-      setGroups([{ key, source: key, items: [...actions, ...merged, ...(native ? [native] : [])] }], {
+      setGroups([{ key, source: key, items: wrap(merged), ...emptyHint(src, merged) }], {
         liveLoading: false,
         liveMs: Math.round(performance.now() - t0),
       });
     } catch (e) {
       if (id !== seq) return;
-      setGroups(
-        [{ key, source: key, items: [...actions, ...local, ...(native ? [native] : [])], error: errorText(e) }],
-        { liveLoading: false },
-      );
+      setGroups([{ key, source: key, items: wrap(local), error: errorText(e) }], { liveLoading: false });
     }
   }, src.liveDelay?.() ?? 220);
 }
@@ -547,8 +561,9 @@ export async function runNative(source?: SourceKey, extra?: NativeTarget): Promi
     if (target.copy) await platform.copy(target.copy);
     const url = await resolveUrl(key, target.url, target.app);
     await platform.openUrl(url);
-    if (target.hint) toast(target.hint, "info", 5000);
     await afterOpen();
+    // Dans l'application : Shorteo tape le raccourci de recherche et colle la requête
+    if (target.recipe && target.app && url === target.app) void platform.nativeSearchKeys(target.recipe);
   } catch (e) {
     toast(errorText(e), "error");
   }

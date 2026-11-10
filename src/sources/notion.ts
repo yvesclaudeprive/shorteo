@@ -373,7 +373,8 @@ export const notionSource: SourceDef = {
       url: "https://www.notion.so/",
       app: "notion://www.notion.so/",
       copy: q.text || q.raw,
-      hint: "Requête copiée : dans Notion, faites Ctrl+K puis Ctrl+V",
+      recipe: "notion",
+      hint: "Ouvre Notion et y lance la recherche (dans le navigateur : Ctrl+K puis Ctrl+V)",
     };
   },
 

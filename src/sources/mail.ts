@@ -1,6 +1,6 @@
 import { qs, mapLimit } from "../app/http";
 import { settings, fillTemplate } from "../app/settings";
-import { getIndex, setIndex } from "../app/index-store";
+import { getIndex, setIndex, setIndexMeta } from "../app/index-store";
 import { decodeEntities, fullDate, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { platform } from "../app/platform";
@@ -23,8 +23,76 @@ interface Contact {
   e: string;
 }
 
+/**
+ * Carnet d'adresses pour l'autocomplétion : personnes vues dans vos mails (en premier),
+ * contacts Pipedrive, puis contacts Google. Sans doublon.
+ */
 function contacts(): Contact[] {
-  return (getIndex("contacts").meta.list as Contact[] | undefined) ?? [];
+  const meta = getIndex("contacts").meta;
+  const learned = (meta.learned as Contact[] | undefined) ?? [];
+  const google = (meta.list as Contact[] | undefined) ?? [];
+  const pipedrive: Contact[] = [];
+  for (const it of getIndex("pipedrive").items) {
+    if (it.kind !== "person") continue;
+    const ems: Array<{ v: string }> = it.f?.em?.length ? it.f.em : it.f?.e ? [{ v: it.f.e }] : [];
+    for (const e of ems) pipedrive.push({ n: it.title, e: String(e.v).toLowerCase() });
+  }
+  const seen = new Set<string>();
+  const out: Contact[] = [];
+  for (const c of [...learned, ...pipedrive, ...google]) {
+    if (!c.e || seen.has(c.e)) continue;
+    seen.add(c.e);
+    out.push(c);
+  }
+  return out;
+}
+
+/**
+ * Suggestions pour de:/à:/cc: à partir de ce qui est tapé, à la manière de Superhuman :
+ * « ha » → « hanane » (prénom) ; « hanane.c » → adresse complète.
+ */
+function contactCompletions(partial: string): OperatorValue[] {
+  const p = norm(partial);
+  const out: OperatorValue[] = [];
+  const seen = new Set<string>();
+  const push = (v: OperatorValue) => {
+    if (seen.has(v.value)) return;
+    seen.add(v.value);
+    out.push(v);
+  };
+  if (!p) {
+    push({ value: "me", label: "Moi" });
+    for (const c of contacts().slice(0, 12)) push({ value: c.e, label: c.n || c.e, detail: c.n ? c.e : undefined });
+    return out;
+  }
+  if ("moi".startsWith(p) || "me".startsWith(p)) push({ value: "me", label: "Moi" });
+  const wantsAddress = /[@.]/.test(p);
+  for (const c of contacts()) {
+    if (out.length >= 12) break;
+    // comme Superhuman : le prénom (ou le nom) d'abord, l'adresse complète si on tape « @ » ou « . »
+    const word = wantsAddress ? undefined : (c.n || "").split(/[\s.-]+/).find((w) => norm(w).startsWith(p));
+    if (word) push({ value: norm(word), label: c.n, detail: c.e });
+    else if (c.e.startsWith(p)) push({ value: c.e, label: c.n || c.e, detail: c.e });
+  }
+  return out;
+}
+
+/** Mémorise les personnes vues dans les mails (expéditeurs, destinataires). */
+function learnContacts(items: ResultItem[]): void {
+  const meta = getIndex("contacts").meta;
+  const learned: Contact[] = [...((meta.learned as Contact[] | undefined) ?? [])];
+  const known = new Set(learned.map((c) => c.e));
+  let changed = false;
+  for (const it of items) {
+    for (const a of [...parseAddressList(it.f?.toRaw ?? ""), { name: it.f?.from ?? "", email: it.f?.fe ?? "" }]) {
+      const e = a.email.toLowerCase();
+      if (!e.includes("@") || known.has(e)) continue;
+      known.add(e);
+      learned.unshift({ n: a.name && a.name !== a.email ? a.name : "", e });
+      changed = true;
+    }
+  }
+  if (changed) setIndexMeta("contacts", { learned: learned.slice(0, 3000) });
 }
 
 function labels(): string[] {
@@ -56,9 +124,9 @@ function dateValues(): OperatorValue[] {
 
 /** Alias français → opérateurs Gmail. */
 const OPERATORS = [
-  { key: "from", aliases: ["de", "from", "expediteur"], label: "Expéditeur", values: contactValues },
-  { key: "to", aliases: ["à", "a", "to", "pour"], label: "Destinataire", values: contactValues },
-  { key: "cc", aliases: ["cc"], label: "En copie", values: contactValues },
+  { key: "from", aliases: ["de", "from", "expediteur"], label: "Expéditeur", values: contactValues, complete: contactCompletions },
+  { key: "to", aliases: ["à", "a", "to", "pour"], label: "Destinataire", values: contactValues, complete: contactCompletions },
+  { key: "cc", aliases: ["cc"], label: "En copie", values: contactValues, complete: contactCompletions },
   { key: "subject", aliases: ["objet", "subject", "sujet"], label: "Objet" },
   {
     key: "has",
@@ -176,6 +244,10 @@ function header(msg: any, name: string): string {
   return h?.value ?? "";
 }
 
+function parseAddressList(v: string): Array<{ name: string; email: string }> {
+  return (v.match(/(?:"[^"]*"|[^,])+/g) ?? []).map((x) => parseAddress(x)).filter((a) => a.email.includes("@"));
+}
+
 function parseAddress(v: string): { name: string; email: string } {
   const m = /^\s*"?([^"<]*)"?\s*<([^>]+)>/.exec(v);
   if (m) return { name: m[1].trim() || m[2], email: m[2].trim() };
@@ -218,6 +290,7 @@ function threadToItem(th: any): ResultItem {
       from: from.name,
       fe: from.email,
       to: header(first, "To"),
+      toRaw: [header(first, "To"), header(first, "Cc")].filter(Boolean).join(", "),
       people: people.slice(0, 4).join(", "),
       n: msgs.length,
       star: msgs.some((m) => m.labelIds?.includes("STARRED")) ? 1 : 0,
@@ -226,19 +299,31 @@ function threadToItem(th: any): ResultItem {
   };
 }
 
+/** Cache des fils déjà chargés (identifiant + version) : les frappes suivantes sont instantanées. */
+const threadCache = new Map<string, { h: string; item: ResultItem }>();
+
 async function searchThreads(gq: string, limit: number): Promise<ResultItem[]> {
   const list = await gapi<any>(`${GMAIL}/threads?${qs({ q: gq, maxResults: limit })}`);
   const threads: any[] = list.threads ?? [];
-  const details = await mapLimit(threads, 8, (t) =>
-    gapi<any>(
+  const items = await mapLimit(threads, 15, async (t) => {
+    const hit = threadCache.get(t.id);
+    if (hit && hit.h === t.historyId) return hit.item;
+    const th = await gapi<any>(
       `${GMAIL}/threads/${t.id}?${qs({
         format: "metadata",
-        metadataHeaders: ["From", "To", "Subject", "Date"],
+        metadataHeaders: ["From", "To", "Cc", "Subject"],
         fields: "id,messages(id,labelIds,internalDate,snippet,payload/headers)",
       })}`,
-    ).catch(() => null),
-  );
-  return details.filter(Boolean).map(threadToItem);
+    ).catch(() => null);
+    if (!th) return null;
+    const item = threadToItem(th);
+    threadCache.set(t.id, { h: t.historyId, item });
+    if (threadCache.size > 800) threadCache.delete(threadCache.keys().next().value as string);
+    return item;
+  });
+  const out = items.filter((x): x is ResultItem => !!x);
+  learnContacts(out);
+  return out;
 }
 
 async function fetchPaged(base: string, key: string, max = 20000): Promise<any[]> {
@@ -280,12 +365,14 @@ export const mailSource: SourceDef = {
     { label: "30 jours", op: "newer_than", value: "1m" },
   ],
   configured: () => settings().connected.google,
+  nativeFirst: true,
+  liveDelay: () => 300,
 
   wantsLive: (q) => q.raw.trim().length >= 2,
 
   async liveSearch(q, limit) {
     if (platform.demo) return demoLive("mail", q);
-    return searchThreads(toGmailQuery(q) || "in:inbox", Math.min(limit, 25));
+    return searchThreads(toGmailQuery(q) || "in:inbox", Math.min(limit, 15));
   },
 
   async emptyResults() {
@@ -324,7 +411,8 @@ export const mailSource: SourceDef = {
       url: SUPERHUMAN_WEB,
       app: "superhuman://",
       copy: gq,
-      hint: "Requête copiée : dans Superhuman, appuyez sur / puis Ctrl+V",
+      recipe: "superhuman",
+      hint: "Ouvre Superhuman et y lance la recherche (dans le navigateur : / puis Ctrl+V)",
     };
   },
 

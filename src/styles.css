@@ -1245,6 +1245,31 @@ a:hover {
   background: color-mix(in srgb, var(--tone-violet) 16%, transparent);
 }
 
+.hint-card {
+  margin: 8px 2px 4px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tool) 12%, var(--layer));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 35%, transparent);
+  color: var(--muted);
+}
+
+.hint-card svg {
+  flex: none;
+  color: var(--tool);
+}
+
+.hint-card p {
+  margin: 0;
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
 .skeleton {
   padding: 8px 10px;
   display: flex;

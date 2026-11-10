@@ -373,6 +373,133 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Recherche native : Notion et Superhuman n'acceptent pas de recherche par lien.
+// Shorteo ouvre l'application puis tape le raccourci de recherche et colle la
+// requête (déjà copiée), UNIQUEMENT si l'application visée est au premier plan.
+// Les séquences de touches sont fixées ici : rien d'autre ne peut être tapé.
+// ---------------------------------------------------------------------------
+
+#[cfg(windows)]
+mod keys {
+    use std::mem::size_of;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL, VK_DIVIDE, VK_RETURN,
+    };
+
+    fn key(vk: u16, up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+
+    fn send(inputs: &[INPUT]) {
+        unsafe {
+            SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
+        }
+    }
+
+    pub fn ctrl(letter: u16) {
+        send(&[key(VK_CONTROL, false), key(letter, false), key(letter, true), key(VK_CONTROL, true)]);
+    }
+
+    pub fn tap(vk: u16) {
+        send(&[key(vk, false), key(vk, true)]);
+    }
+
+    pub const K_P: u16 = 0x50;
+    pub const K_V: u16 = 0x56;
+    pub const SLASH: u16 = VK_DIVIDE;
+    pub const ENTER: u16 = VK_RETURN;
+}
+
+/// Nom du processus de la fenêtre au premier plan (ex. « notion.exe »).
+#[cfg(windows)]
+fn foreground_process(state: &AppState) -> Option<String> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    let mut pid: u32 = 0;
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() {
+            return None;
+        }
+        GetWindowThreadProcessId(hwnd, &mut pid);
+    }
+    if pid == 0 {
+        return None;
+    }
+    let mut sys = state.sys.lock().unwrap();
+    let p = sysinfo::Pid::from_u32(pid);
+    sys.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[p]),
+        false,
+        sysinfo::ProcessRefreshKind::nothing(),
+    );
+    sys.process(p).map(|x| x.name().to_string_lossy().to_lowercase())
+}
+
+#[tauri::command]
+async fn native_search_keys(app: AppHandle, recipe: String) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        let target = match recipe.as_str() {
+            "notion" => "notion.exe",
+            "superhuman" => "superhuman.exe",
+            _ => return Err("Recette inconnue".into()),
+        };
+        let res = tauri::async_runtime::spawn_blocking(move || {
+            let state = app.state::<AppState>();
+            // attendre que l'application soit au premier plan (démarrage compris)
+            let deadline = Instant::now() + Duration::from_secs(9);
+            loop {
+                if foreground_process(&state).as_deref() == Some(target) {
+                    break;
+                }
+                if Instant::now() > deadline {
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(120));
+            }
+            std::thread::sleep(Duration::from_millis(550));
+            if foreground_process(&state).as_deref() != Some(target) {
+                return false;
+            }
+            match target {
+                "notion.exe" => {
+                    keys::ctrl(keys::K_P);
+                    std::thread::sleep(Duration::from_millis(450));
+                    keys::ctrl(keys::K_V);
+                }
+                _ => {
+                    keys::tap(keys::SLASH);
+                    std::thread::sleep(Duration::from_millis(450));
+                    keys::ctrl(keys::K_V);
+                    std::thread::sleep(Duration::from_millis(200));
+                    keys::tap(keys::ENTER);
+                }
+            }
+            true
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(res)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, recipe);
+        Ok(false)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Raccourci global
 // ---------------------------------------------------------------------------
 
@@ -1024,6 +1151,7 @@ pub fn run() {
             oauth_prepare,
             oauth_wait,
             read_json_file,
+            native_search_keys,
             import_ai_history
         ])
         .run(tauri::generate_context!())

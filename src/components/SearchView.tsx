@@ -146,6 +146,17 @@ function Results() {
           {g.items.map((it) => (
             <Row key={itemKey(it)} item={it} selected={itemKey(it) === selKey} tokens={tokens} />
           ))}
+          {g.hint && (
+            <div className="hint-card">
+              <Plug size={16} />
+              <p>{g.hint}</p>
+              {g.hintTab && (
+                <button className="btn" onClick={() => openSettings(g.hintTab)}>
+                  Connecter
+                </button>
+              )}
+            </div>
+          )}
           {g.loading && !g.items.length && (
             <div className="skeleton">
               <span />

@@ -1,6 +1,6 @@
 [package]
 name = "shorteo"
-version = "0.3.2"
+version = "0.3.3"
 description = "Recherche rapide Notion, Drive, Pipedrive, Mails, ChatGPT et Claude"
 edition = "2021"
 
@@ -28,7 +28,7 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
 winreg = "0.55"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.release]
 codegen-units = 1

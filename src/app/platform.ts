@@ -131,6 +131,12 @@ export const platform = {
     }
   },
 
+  /** Tape le raccourci de recherche + colle la requête dans l'application ouverte (Windows). */
+  async nativeSearchKeys(recipe: "notion" | "superhuman"): Promise<boolean> {
+    if (!isTauri) return false;
+    return invoke<boolean>("native_search_keys", { recipe });
+  },
+
   async readJsonFile(path: string): Promise<string> {
     return invoke<string>("read_json_file", { path });
   },

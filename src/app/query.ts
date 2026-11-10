@@ -136,14 +136,15 @@ export function computeCompletions(input: string, caret: number, source: SourceD
     const neg = raw.startsWith("-") ? "-" : "";
     const typedKey = raw.slice(neg.length, colon);
     const op = findOperator(source, typedKey);
-    if (!op || !op.values) return { ...EMPTY, start: cur.start, end: cur.end };
+    if (!op || (!op.values && !op.complete)) return { ...EMPTY, start: cur.start, end: cur.end };
     const partial = unquote(raw.slice(colon + 1));
-    const ranked = op
-      .values()
-      .map((v) => ({ v, s: valueMatches(v, partial) }))
-      .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s)
-      .slice(0, 8);
+    const ranked = op.complete
+      ? op.complete(partial).slice(0, 8).map((v) => ({ v, s: 1 }))
+      : (op.values?.() ?? [])
+          .map((v) => ({ v, s: valueMatches(v, partial) }))
+          .filter((x) => x.s > 0)
+          .sort((a, b) => b.s - a.s)
+          .slice(0, 8);
     for (const { v } of ranked) {
       items.push({
         label: v.label ?? v.value,

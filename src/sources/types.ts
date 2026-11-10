@@ -51,6 +51,8 @@ export interface OperatorDef {
   values?: () => OperatorValue[];
   /** Valeurs fermées : une valeur inconnue (en cours de saisie) est ignorée */
   strict?: boolean;
+  /** Suggestions calculées à partir de ce qui est tapé (prioritaire sur values) */
+  complete?: (partial: string) => OperatorValue[];
 }
 
 export interface ParsedOp {
@@ -97,6 +99,8 @@ export interface NativeTarget {
   /** Texte copié dans le presse-papiers quand l'outil n'accepte pas de recherche par lien */
   copy?: string;
   hint?: string;
+  /** Recherche saisie automatiquement dans l'application ouverte (raccourci + collage) */
+  recipe?: "notion" | "superhuman";
 }
 
 export interface ContactInfo {
@@ -149,6 +153,8 @@ export interface SourceDef {
   /** Lignes d'action affichées en tête (ex. « Demander à Claude ») */
   actions?(q: ParsedQuery): ResultItem[];
   nativeSearch(q: ParsedQuery): NativeTarget;
+  /** La ligne « Rechercher dans l'outil » s'affiche en tête (Entrée = recherche native) */
+  nativeFirst?: boolean;
   /** Autres outils où relancer la même recherche (ex. Gmail) */
   extraNative?(q: ParsedQuery): NativeTarget[];
   describe(item: ResultItem): Described;
