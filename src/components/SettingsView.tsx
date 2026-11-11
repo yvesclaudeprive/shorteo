@@ -2,7 +2,11 @@ import { dragHandle } from "../app/drag";
 import { useEffect, useState, type ReactNode, type KeyboardEvent } from "react";
 import {
   ArrowLeft,
+  ArrowLeftRight,
   Check,
+  Download,
+  Eye,
+  EyeOff,
   Database,
   ExternalLink,
   KeyRound,
@@ -27,6 +31,7 @@ import { testPipedrive } from "../sources/pipedrive";
 import { connectGoogle, disconnectGoogle, gapi, parseClientJson, testGoogle, type CheckResult } from "../sources/google";
 import { superhumanLinks } from "../sources/mail";
 import { importHistory } from "../sources/ai";
+import { exportConfig, importConfig } from "../app/transfer";
 import { driveShortcuts } from "../sources/drive";
 import type { SourceId } from "../sources/types";
 import { SourceTile, ShorteoLogo } from "./icons";
@@ -41,6 +46,7 @@ const TABS: Array<{ id: string; label: string; tile?: SourceId; icon?: typeof Da
   { id: "superhuman", label: "Superhuman", tile: "mail" },
   { id: "ai", label: "ChatGPT & Claude", tile: "claude" },
   { id: "index", label: "Index & données", icon: Database },
+  { id: "transfer", label: "Transfert vers un PC", icon: ArrowLeftRight },
 ];
 
 function Link({ href, children }: { href: string; children: ReactNode }) {
@@ -108,6 +114,7 @@ function SecretInput({
 }) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(false);
   const [present, refresh] = useSecretPresent(secretKey);
   const save = async () => {
     if (!value.trim()) return;
@@ -115,6 +122,7 @@ function SecretInput({
     try {
       await setSecret(secretKey, value.trim());
       setValue("");
+      setShown(false);
       refresh();
       await onSave();
     } catch (e) {
@@ -123,19 +131,35 @@ function SecretInput({
       setBusy(false);
     }
   };
+  const toggle = async () => {
+    if (shown) {
+      setShown(false);
+      setValue("");
+      return;
+    }
+    const v = await getSecret(secretKey);
+    setValue(v ?? "");
+    setShown(true);
+  };
   return (
     <Field
       label={label}
       hint={present ? <span className="ok"><Check size={12} /> Enregistrée dans le coffre-fort Windows</span> : "Stockée dans le coffre-fort Windows, jamais dans un fichier."}
     >
       <div className="inline">
-        <input
-          type="password"
-          value={value}
-          placeholder={present ? "•••••••• (déjà enregistrée — collez pour remplacer)" : placeholder}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void save()}
-        />
+        <div className="secret-wrap">
+          <input
+            type={shown ? "text" : "password"}
+            value={value}
+            placeholder={present ? "•••••••• (déjà enregistrée : collez pour remplacer)" : placeholder}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void save()}
+            spellCheck={false}
+          />
+          <button className="eye" title={shown ? "Masquer" : "Afficher la clé enregistrée"} onClick={() => void toggle()}>
+            {shown ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
         <button className="btn primary" disabled={busy || !value.trim()} onClick={() => void save()}>
           {busy ? <LoaderCircle size={14} className="spin" /> : <KeyRound size={14} />} Enregistrer
         </button>
@@ -587,6 +611,7 @@ function GoogleTab() {
   const [checking, setChecking] = useState(false);
   const [checks, setChecks] = useState<CheckResult[] | null>(null);
   const [secretSaved, setSecretSaved] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   useEffect(() => {
     void getSecret("google_client_id").then((v) => v && setCid(v));
     void getSecret("google_client_secret").then((v) => setSecretSaved(!!v));
@@ -718,12 +743,30 @@ function GoogleTab() {
         label="Code secret du client"
         hint={secretSaved ? <span className="ok"><Check size={12} /> Déjà enregistré dans le coffre-fort Windows</span> : "Stocké dans le coffre-fort Windows."}
       >
-        <input
-          type="password"
-          value={secret}
-          placeholder={secretSaved ? "•••••••• (déjà enregistré)" : "GOCSPX-…"}
-          onChange={(e) => setSecretValue(e.target.value.trim())}
-        />
+        <div className="secret-wrap">
+          <input
+            type={showSecret ? "text" : "password"}
+            value={secret}
+            placeholder={secretSaved ? "•••••••• (déjà enregistré)" : "GOCSPX-…"}
+            onChange={(e) => setSecretValue(e.target.value.trim())}
+            spellCheck={false}
+          />
+          <button
+            className="eye"
+            title={showSecret ? "Masquer" : "Afficher le code enregistré"}
+            onClick={async () => {
+              if (showSecret) {
+                setShowSecret(false);
+                setSecretValue("");
+              } else {
+                setSecretValue((await getSecret("google_client_secret")) ?? "");
+                setShowSecret(true);
+              }
+            }}
+          >
+            {showSecret ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
       </Field>
       <div className="row-buttons">
         <button className="btn primary" disabled={busy} onClick={() => void connect()}>
@@ -909,6 +952,113 @@ function AiTab() {
   );
 }
 
+function TransferTab() {
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [pwIn, setPwIn] = useState("");
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+
+  const doExport = async () => {
+    if (pw1.length < 8) return toast("Choisissez un mot de passe d'au moins 8 caractères", "error");
+    if (pw1 !== pw2) return toast("Les deux mots de passe ne correspondent pas", "error");
+    setBusy("export");
+    try {
+      const { content, count } = await exportConfig(pw1);
+      const path = await platform.saveExportFile(content);
+      if (path) {
+        toast(`Configuration exportée (${count} clés) : ${path}`, "success", 8000);
+        setPw1("");
+        setPw2("");
+      }
+    } catch (e) {
+      toast(errorText(e), "error", 8000);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    if (!pwIn) return toast("Saisissez le mot de passe choisi lors de l'export", "error");
+    setBusy("import");
+    try {
+      const path = await platform.pickConfigFile();
+      if (!path) return;
+      const before = settingsStore.get().shortcut;
+      const count = await importConfig(await platform.readJsonFile(path), pwIn);
+      const after = settingsStore.get().shortcut;
+      if (after !== before) await platform.setShortcut(after).catch((e) => toast(errorText(e), "error", 8000));
+      setPwIn("");
+      toast(`Configuration importée (${count} clés). Synchronisation en cours…`, "success", 8000);
+      void syncAll(true);
+    } catch (e) {
+      toast(errorText(e), "error", 8000);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="tab">
+      <h2>Transférer vers un autre PC</h2>
+      <p className="lead small">
+        Exportez votre configuration dans un fichier <code>.shorteo</code>, puis importez-le dans Shorteo sur l'autre
+        ordinateur. Le fichier est chiffré avec le mot de passe que vous choisissez (AES-256) : sans lui, il est
+        illisible. Vous pouvez donc le faire passer par clé USB, Drive ou e-mail.
+      </p>
+
+      <h3>1. Exporter (sur ce PC)</h3>
+      <Field label="Mot de passe du fichier" hint="Au moins 8 caractères. Il vous sera demandé à l'import ; il n'est enregistré nulle part.">
+        <input type="password" value={pw1} onChange={(e) => setPw1(e.target.value)} placeholder="Mot de passe" />
+      </Field>
+      <Field label="Confirmer le mot de passe">
+        <input
+          type="password"
+          value={pw2}
+          onChange={(e) => setPw2(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void doExport()}
+          placeholder="Mot de passe"
+        />
+      </Field>
+      <div className="row-buttons">
+        <button className="btn primary" disabled={!!busy} onClick={() => void doExport()}>
+          {busy === "export" ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />} Exporter la configuration
+        </button>
+      </div>
+
+      <h3>2. Importer (sur l'autre PC)</h3>
+      <Field label="Mot de passe du fichier">
+        <input
+          type="password"
+          value={pwIn}
+          onChange={(e) => setPwIn(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void doImport()}
+          placeholder="Mot de passe choisi à l'export"
+        />
+      </Field>
+      <div className="row-buttons">
+        <button className="btn primary" disabled={!!busy} onClick={() => void doImport()}>
+          {busy === "import" ? <LoaderCircle size={14} className="spin" /> : <Upload size={14} />} Choisir le fichier et importer
+        </button>
+      </div>
+
+      <h3>Ce qui est transféré</h3>
+      <ul className="steps">
+        <li>
+          <b>Inclus</b> : réglages (raccourci, thème, modes d'ouverture, liens), raccourcis Drive, clé Notion (index),
+          domaine et clé Pipedrive, connexion Google (Drive et mails).
+        </li>
+        <li>
+          <b>À refaire sur chaque PC</b> : la « Recherche complète » Notion (un clic sur « Se connecter à Notion »), le
+          lancement au démarrage de Windows et l'import de l'historique ChatGPT / Claude.
+        </li>
+        <li>
+          <b>Reconstruit automatiquement</b> : l'index local (titres et métadonnées), en quelques minutes.
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 function IndexTab() {
   useStore(indexVersion);
   const s = useStore(ui);
@@ -1014,6 +1164,7 @@ export function SettingsView() {
           {tab === "superhuman" && <SuperhumanTab />}
           {tab === "ai" && <AiTab />}
           {tab === "index" && <IndexTab />}
+          {tab === "transfer" && <TransferTab />}
         </div>
       </div>
     </div>

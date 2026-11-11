@@ -137,6 +137,42 @@ export const platform = {
     return invoke<boolean>("native_search_keys", { recipe });
   },
 
+  /** Enregistre l'export chiffré : l'utilisateur choisit l'emplacement. */
+  async saveExportFile(content: string): Promise<string | null> {
+    if (!isTauri) return null;
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    await platform.suspendBlur(true);
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      let path = await save({
+        defaultPath: `configuration-shorteo-${day}.shorteo`,
+        filters: [{ name: "Configuration Shorteo", extensions: ["shorteo"] }],
+      });
+      if (!path) return null;
+      if (!path.toLowerCase().endsWith(".shorteo")) path += ".shorteo";
+      await invoke("write_export_file", { path, content });
+      return path;
+    } finally {
+      await platform.suspendBlur(false);
+    }
+  },
+
+  async pickConfigFile(): Promise<string | null> {
+    if (!isTauri) return null;
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    await platform.suspendBlur(true);
+    try {
+      const res = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Configuration Shorteo", extensions: ["shorteo"] }],
+      });
+      return typeof res === "string" ? res : null;
+    } finally {
+      await platform.suspendBlur(false);
+    }
+  },
+
   async readJsonFile(path: string): Promise<string> {
     return invoke<string>("read_json_file", { path });
   },

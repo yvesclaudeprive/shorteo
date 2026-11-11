@@ -2063,6 +2063,45 @@ a:hover {
   color: var(--muted);
 }
 
+/* Champ secret avec œil */
+
+.secret-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.secret-wrap input {
+  flex: 1;
+  padding-right: 40px !important;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.secret-wrap input::placeholder {
+  font-family: var(--font);
+  font-size: 13px;
+}
+
+.eye {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.eye:hover {
+  color: var(--text);
+  background: var(--layer-active);
+}
+
 .inline {
   display: flex;
   gap: 8px;

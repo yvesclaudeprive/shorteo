@@ -958,17 +958,31 @@ fn import_history_blocking(path: &str, kind: &str) -> Result<Vec<Conversation>, 
     Ok(out)
 }
 
-/// Lit un petit fichier .json choisi par l'utilisateur (fichier d'identifiants Google).
+/// Lit un petit fichier choisi par l'utilisateur : identifiants Google (.json)
+/// ou export chiffré de la configuration Shorteo (.shorteo).
 #[tauri::command]
 fn read_json_file(path: String) -> Result<String, String> {
-    if !path.to_lowercase().ends_with(".json") {
-        return Err("Choisissez un fichier .json".into());
+    let lower = path.to_lowercase();
+    if !lower.ends_with(".json") && !lower.ends_with(".shorteo") {
+        return Err("Choisissez un fichier .json ou .shorteo".into());
     }
     let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
-    if meta.len() > 64 * 1024 {
+    if meta.len() > 256 * 1024 {
         return Err("Fichier trop volumineux".into());
     }
     fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+/// Enregistre l'export chiffré de la configuration (extension .shorteo uniquement).
+#[tauri::command]
+fn write_export_file(path: String, content: String) -> Result<(), String> {
+    if !path.to_lowercase().ends_with(".shorteo") {
+        return Err("Le fichier doit avoir l'extension .shorteo".into());
+    }
+    if content.len() > 256 * 1024 {
+        return Err("Contenu trop volumineux".into());
+    }
+    fs::write(&path, content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1151,6 +1165,7 @@ pub fn run() {
             oauth_prepare,
             oauth_wait,
             read_json_file,
+            write_export_file,
             native_search_keys,
             import_ai_history
         ])
