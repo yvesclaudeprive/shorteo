@@ -88,6 +88,10 @@ function toItem(r: any): ResultItem {
   };
 }
 
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function users(): Record<string, string> {
   return getIndex("notion").meta.users ?? {};
 }
@@ -355,6 +359,10 @@ export const notionSource: SourceDef = {
 
     const settled = await Promise.allSettled(tasks);
     const ok = settled.filter((x): x is PromiseFulfilledResult<ResultItem[]> => x.status === "fulfilled");
+    // Une erreur de la recherche complète ne doit jamais être masquée par l'index (souvent vide)
+    if (st.connected.notionMcp && settled[0]?.status === "rejected") {
+      throw new Error(`Recherche complète Notion : ${errorMessage((settled[0] as PromiseRejectedResult).reason)}`);
+    }
     if (!ok.length) {
       const err = settled.find((x): x is PromiseRejectedResult => x.status === "rejected");
       throw err?.reason ?? new Error("Recherche Notion impossible");

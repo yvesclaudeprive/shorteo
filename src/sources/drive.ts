@@ -147,6 +147,51 @@ function shortcutTags(item: ResultItem): Array<{ label: string; tone: Tone }> {
   return out;
 }
 
+// --- Arborescence des dossiers ---
+
+export const PATH_SEP = " / ";
+
+/** Chemin d'un dossier, de la racine connue jusqu'à lui (noms). */
+export function folderPath(folder: ResultItem): string[] {
+  return [...folderChain(folder)].reverse().concat(folder.title);
+}
+
+/** Sous-dossiers d'un dossier (ou dossiers racine si parentId est null), triés par nom. */
+export function childFolders(parentId: string | null): ResultItem[] {
+  const idx = getIndex("drive");
+  return idx.items
+    .filter((i) => {
+      if (i.kind !== "folder") return false;
+      if (parentId) return i.f?.p === parentId;
+      const parent = i.f?.p ? idx.byId.get(i.f.p) : undefined;
+      return !parent || parent.kind !== "folder";
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, "fr"));
+}
+
+/** Dossier désigné par une valeur de filtre : nom (« Devis ») ou chemin (« Clients en cours / ACME / Devis »). */
+export function folderByValue(value: string): ResultItem | undefined {
+  const segs = value.split(PATH_SEP).map((x) => norm(x.trim())).filter(Boolean);
+  if (!segs.length) return undefined;
+  const folders = getIndex("drive").items.filter((i) => i.kind === "folder" && norm(i.title) === segs[segs.length - 1]);
+  if (segs.length === 1) return folders.sort((a, b) => (b.t ?? 0) - (a.t ?? 0))[0];
+  return folders.find((f) => {
+    const p = folderPath(f).map(norm);
+    return p.length >= segs.length && segs.every((s, i) => p[p.length - segs.length + i] === s);
+  });
+}
+
+/** L'élément est-il dans ce dossier (sous-dossiers compris) ? */
+function inFolder(it: ResultItem, value: string): boolean {
+  const segs = value.split(PATH_SEP).map((x) => norm(x.trim())).filter(Boolean);
+  const chain = [...folderChain(it)].reverse().map(norm);
+  if (segs.length === 1) return chain.some((c) => c === segs[0] || c.includes(segs[0]));
+  for (let i = 0; i + segs.length <= chain.length; i++) {
+    if (segs.every((s, k) => chain[i + k] === s)) return true;
+  }
+  return false;
+}
+
 /** Raccourcis Drive des paramètres, retrouvés par leur nom dans l'index. */
 export function driveShortcuts(): Array<{ name: string; item?: ResultItem }> {
   const items = getIndex("drive").items;
@@ -190,7 +235,7 @@ function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
   const own = opValues(q, "owner").map(norm);
   const period = rangeOf(q, "modifie");
   const flags = opValues(q, "is");
-  const folders = opValues(q, "dossier").map(norm);
+  const folders = opValues(q, "dossier");
   return (it) => {
     if (types.length && !types.includes(it.kind)) return false;
     if (own.length) {
@@ -202,11 +247,8 @@ function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
     if (period && !inRange(it.t, period)) return false;
     if (flags.includes("suivi") && !it.f?.s) return false;
     if (flags.includes("partage") && !it.f?.sh) return false;
-    if (folders.length) {
-      // dans le dossier ou l'un de ses sous-dossiers
-      const chain = folderChain(it).map(norm);
-      if (!folders.some((f) => chain.some((c) => c === f || c.includes(f)))) return false;
-    }
+    // dans le dossier ou l'un de ses sous-dossiers
+    if (folders.length && !folders.some((f) => inFolder(it, f))) return false;
     return true;
   };
 }
@@ -214,8 +256,7 @@ function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 function folderIdByName(name: string): string | undefined {
-  const n = norm(name);
-  return getIndex("drive").items.find((i) => i.kind === "folder" && norm(i.title) === n)?.id;
+  return folderByValue(name)?.id;
 }
 
 function liveQuery(q: ParsedQuery): string {
@@ -289,8 +330,11 @@ export const driveSource: SourceDef = {
         getIndex("drive")
           .items.filter((i) => i.kind === "folder")
           .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
-          .slice(0, 80)
-          .map((i) => ({ value: i.title })),
+          .slice(0, 400)
+          .map((i) => {
+            const path = folderPath(i);
+            return { value: path.join(PATH_SEP), label: i.title, detail: path.slice(0, -1).join(" › ") || undefined };
+          }),
     },
   ],
   filterBar: ["type", "owner", "modifie", "dossier", "is"],
@@ -367,6 +411,14 @@ export const driveSource: SourceDef = {
     const period = rangeOf(q, "modifie");
     if (period?.from !== undefined) parts.push(`after:${new Date(period.from).toISOString().slice(0, 10)}`);
     if (period?.to !== undefined) parts.push(`before:${new Date(period.to).toISOString().slice(0, 10)}`);
+    // dossier choisi : sans autre critère, on ouvre le dossier ; sinon recherche limitée à ce dossier
+    const folder = opValues(q, "dossier")
+      .map(folderByValue)
+      .find((f) => !!f);
+    if (folder && !parts.length) {
+      return { label: `Ouvrir le dossier « ${folder.title} »`, url: `https://drive.google.com/drive/folders/${folder.id}` };
+    }
+    if (folder) parts.push(`parent:${folder.id}`);
     return {
       label: "Rechercher dans Drive",
       url: `https://drive.google.com/drive/search?q=${encodeURIComponent(parts.join(" "))}`,

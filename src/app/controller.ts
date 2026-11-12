@@ -210,7 +210,7 @@ function searchOne(id: number, key: SourceKey, query: string): void {
   }
 
   const local = src.localSearch?.(q, 40) ?? [];
-  const native = src.actions ? null : nativeRow(src, src.nativeSearch(q), query);
+  const native = nativeRow(src, src.nativeSearch(q), query);
   const willLive = !!src.liveSearch && (src.wantsLive?.(q) ?? true);
   const wrap = (list: ResultItem[]): ResultItem[] =>
     !native ? [...actions, ...list] : src.nativeFirst ? [native, ...actions, ...list] : [...actions, ...list, native];
@@ -578,13 +578,22 @@ export async function runNative(source?: SourceKey, extra?: NativeTarget): Promi
   const target = extra ?? src.nativeSearch(parseQuery(s.query, src));
   try {
     if (target.copy) await platform.copy(target.copy);
-    const at = src.appTarget;
-    const wasRunning = at ? !!(await platform.appsStatus([at.process], [at.scheme])).running[at.process] : false;
-    const url = await resolveUrl(key, target.url, target.app);
-    await platform.openUrl(url);
+    const mode = src.appTarget?.mode();
+    if (target.recipe && mode !== "browser") {
+      // Pipedrive est un site : on l'ouvre, puis la recherche y est saisie
+      if (target.recipe === "pipedrive") await platform.openUrl(target.url);
+      const r = await platform.nativeSearch(target.recipe);
+      if (r !== "not_installed") {
+        ui.set({ hiddenAt: Date.now() });
+        return;
+      }
+      if (target.recipe === "pipedrive") {
+        await afterOpen();
+        return;
+      }
+    }
+    await platform.openUrl(target.url);
     await afterOpen();
-    // Dans l'application : Shorteo tape le raccourci de recherche et colle la requête
-    if (target.recipe && target.app && url === target.app) void platform.nativeSearchKeys(target.recipe, !wasRunning);
   } catch (e) {
     toast(errorText(e), "error");
   }

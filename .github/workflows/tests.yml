@@ -1,0 +1,68 @@
+name: Tests
+
+# Vérifications avant toute publication : logique de l'interface, lecture seule,
+# et saisie automatique sous un vrai Windows.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm ci
+
+      - name: Tests de l'interface (logique)
+        shell: pwsh
+        run: |
+          npx vitest run *>&1 | Tee-Object -FilePath vitest.log
+          if ($LASTEXITCODE -ne 0) {
+            $t = Get-Content vitest.log -Raw
+            $t = $t.Substring([Math]::Max(0, $t.Length - 3500)) -replace '%', '%25' -replace "`r?`n", '%0A'
+            Write-Output "::error title=Tests interface::$t"
+            exit 1
+          }
+
+      - name: Compilation de l'interface
+        run: npm run build
+
+      - name: Tests Rust (lecture seule)
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib *>&1 | Tee-Object -FilePath rust.log
+          if ($LASTEXITCODE -ne 0) {
+            $t = Get-Content rust.log -Raw
+            $t = $t.Substring([Math]::Max(0, $t.Length - 3500)) -replace '%', '%25' -replace "`r?`n", '%0A'
+            Write-Output "::error title=Tests Rust::$t"
+            exit 1
+          }
+
+      - name: Test clavier Windows (Bloc-notes)
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --test windows_keys -- --ignored --nocapture *>&1 | Tee-Object -FilePath keys.log
+          if ($LASTEXITCODE -ne 0) {
+            $t = Get-Content keys.log -Raw
+            $t = $t.Substring([Math]::Max(0, $t.Length - 3500)) -replace '%', '%25' -replace "`r?`n", '%0A'
+            Write-Output "::error title=Test clavier Windows::$t"
+            exit 1
+          }
+          Write-Output "::notice title=Test clavier Windows::Bloc-notes : premier plan, frappe de / et collage vérifiés"

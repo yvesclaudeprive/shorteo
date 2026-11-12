@@ -6,6 +6,7 @@ import { hasOp, parseQuery, valueLabel } from "../app/query";
 import { norm } from "../app/search";
 import { sourceDef } from "../sources/registry";
 import type { OperatorDef, OperatorValue, SourceDef } from "../sources/types";
+import { FolderBrowser } from "./FolderBrowser";
 
 interface MenuState {
   key: string;
@@ -228,7 +229,11 @@ export function FilterBar() {
       >
         <Plus size={13} /> Filtre
       </button>
-      {menu && <FilterMenu src={src} menu={menu} onClose={() => setMenu(null)} />}
+      {menu && src.key === "drive" && menu.key === "dossier" ? (
+        <FolderBrowser x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+      ) : (
+        menu && <FilterMenu src={src} menu={menu} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
 }

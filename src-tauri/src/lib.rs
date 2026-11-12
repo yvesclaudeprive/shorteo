@@ -373,14 +373,14 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Recherche native : Notion et Superhuman n'acceptent pas de recherche par lien.
-// Shorteo ouvre l'application puis tape le raccourci de recherche et colle la
-// requête (déjà copiée), UNIQUEMENT si l'application visée est au premier plan.
-// Les séquences de touches sont fixées ici : rien d'autre ne peut être tapé.
+// Recherche native : Notion, Superhuman, Pipedrive, Claude et ChatGPT n'acceptent pas
+// de recherche par lien. Shorteo met l'application au premier plan (ou la lance), puis
+// tape son raccourci de recherche et colle la requête (déjà copiée), UNIQUEMENT si
+// l'application visée est au premier plan. Les séquences sont fixées ici.
 // ---------------------------------------------------------------------------
 
 #[cfg(windows)]
-mod keys {
+pub mod keys {
     use std::mem::size_of;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL, VK_DIVIDE,
@@ -402,28 +402,23 @@ mod keys {
         }
     }
 
-    fn send(inputs: &[INPUT]) {
-        unsafe {
-            SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32);
-        }
+    fn send(inputs: &[INPUT]) -> u32 {
+        unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) }
     }
 
-    pub fn ctrl(letter: u16) {
-        send(&[key(VK_CONTROL, false), key(letter, false), key(letter, true), key(VK_CONTROL, true)]);
+    pub fn ctrl(letter: u16) -> u32 {
+        send(&[key(VK_CONTROL, false), key(letter, false), key(letter, true), key(VK_CONTROL, true)])
     }
 
-    pub fn tap(vk: u16) {
-        send(&[key(vk, false), key(vk, true)]);
+    pub fn tap(vk: u16) -> u32 {
+        send(&[key(vk, false), key(vk, true)])
     }
 
     /// Tape un caractère avec la vraie touche du clavier actuel (AZERTY, QWERTY…).
-    pub fn type_char(c: char) {
+    pub fn type_char(c: char) -> u32 {
         let r = unsafe { VkKeyScanW(c as u16) };
         if r == -1 {
-            if c == '/' {
-                tap(VK_DIVIDE);
-            }
-            return;
+            return if c == '/' { tap(VK_DIVIDE) } else { 0 };
         }
         let vk = (r as u16) & 0xff;
         let mods = ((r as u16) >> 8) & 0xff;
@@ -441,81 +436,215 @@ mod keys {
         seq.push(key(vk, false));
         seq.push(key(vk, true));
         seq.extend(down.iter().rev().map(|m| key(*m, true)));
-        send(&seq);
+        send(&seq)
     }
 
+    pub const K_A: u16 = 0x41;
+    pub const K_C: u16 = 0x43;
+    pub const K_K: u16 = 0x4B;
     pub const K_P: u16 = 0x50;
     pub const K_V: u16 = 0x56;
     pub const ENTER: u16 = VK_RETURN;
 }
 
-/// Nom du processus de la fenêtre au premier plan (ex. « notion.exe »).
+/// Fenêtres : premier plan, recherche de la fenêtre d'un processus, lancement.
 #[cfg(windows)]
-fn foreground_process(state: &AppState) -> Option<String> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
-    let mut pid: u32 = 0;
-    unsafe {
-        let hwnd = GetForegroundWindow();
-        if hwnd.is_null() {
+pub mod winapp {
+    use std::collections::HashSet;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetForegroundWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+
+    pub fn pid_of(hwnd: HWND) -> u32 {
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        pid
+    }
+
+    /// Identifiants des processus portant ce nom (ex. « notion.exe »).
+    pub fn pids(sys: &mut sysinfo::System, name: &str) -> HashSet<u32> {
+        sys.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::nothing());
+        sys.processes()
+            .iter()
+            .filter(|(_, p)| p.name().to_string_lossy().eq_ignore_ascii_case(name))
+            .map(|(pid, _)| pid.as_u32())
+            .collect()
+    }
+
+    pub fn foreground_pid() -> u32 {
+        let h = unsafe { GetForegroundWindow() };
+        if h.is_null() {
+            0
+        } else {
+            pid_of(h)
+        }
+    }
+
+    struct Search {
+        pids: HashSet<u32>,
+        found: HWND,
+    }
+
+    unsafe extern "system" fn enum_cb(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let s = &mut *(lparam as *mut Search);
+        if IsWindowVisible(hwnd) != 0 && GetWindowTextLengthW(hwnd) > 0 && s.pids.contains(&pid_of(hwnd)) {
+            s.found = hwnd;
+            return 0;
+        }
+        1
+    }
+
+    /// Fenêtre principale visible d'un des processus.
+    pub fn find_window(pids: &HashSet<u32>) -> Option<HWND> {
+        if pids.is_empty() {
             return None;
         }
-        GetWindowThreadProcessId(hwnd, &mut pid);
+        let mut s = Search { pids: pids.clone(), found: std::ptr::null_mut() };
+        unsafe { EnumWindows(Some(enum_cb), &mut s as *mut Search as LPARAM) };
+        if s.found.is_null() {
+            None
+        } else {
+            Some(s.found)
+        }
     }
-    if pid == 0 {
-        return None;
+
+    /// Met la fenêtre au premier plan (restaurée si réduite).
+    pub fn focus(hwnd: HWND) -> bool {
+        unsafe {
+            if IsIconic(hwnd) != 0 {
+                ShowWindow(hwnd, SW_RESTORE);
+            }
+            SetForegroundWindow(hwnd) != 0
+        }
     }
-    let mut sys = state.sys.lock().unwrap();
-    let p = sysinfo::Pid::from_u32(pid);
-    sys.refresh_processes_specifics(
-        sysinfo::ProcessesToUpdate::Some(&[p]),
-        false,
-        sysinfo::ProcessRefreshKind::nothing(),
-    );
-    sys.process(p).map(|x| x.name().to_string_lossy().to_lowercase())
+
+    /// Programme associé à un protocole (ex. « notion » → …\Notion.exe).
+    pub fn exe_for_scheme(scheme: &str) -> Option<String> {
+        use winreg::enums::HKEY_CLASSES_ROOT;
+        use winreg::RegKey;
+        let cmd: String = RegKey::predef(HKEY_CLASSES_ROOT)
+            .open_subkey(format!("{scheme}\\shell\\open\\command"))
+            .ok()?
+            .get_value("")
+            .ok()?;
+        let cmd = cmd.trim();
+        let exe = if let Some(rest) = cmd.strip_prefix('"') {
+            rest.split('"').next()?.to_string()
+        } else {
+            cmd.split_whitespace().next()?.to_string()
+        };
+        std::path::Path::new(&exe).exists().then_some(exe)
+    }
 }
 
+/// Recettes : processus, protocole (pour lancer l'application), navigateur ou non.
+#[cfg(windows)]
+fn recipe_target(recipe: &str) -> Option<(&'static str, Option<&'static str>, bool)> {
+    match recipe {
+        "notion" => Some(("notion.exe", Some("notion"), false)),
+        "superhuman" => Some(("superhuman.exe", Some("superhuman"), false)),
+        "claude" => Some(("claude.exe", Some("claude"), false)),
+        "chatgpt" => Some(("chatgpt.exe", None, false)),
+        "pipedrive" => Some(("", None, true)),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+const BROWSERS: &[&str] = &[
+    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
+];
+
+#[cfg(windows)]
+fn type_recipe(recipe: &str) {
+    use std::thread::sleep;
+    match recipe {
+        "notion" => {
+            keys::ctrl(keys::K_P);
+            sleep(Duration::from_millis(450));
+            keys::ctrl(keys::K_V);
+        }
+        "superhuman" => {
+            keys::type_char('/');
+            sleep(Duration::from_millis(450));
+            keys::ctrl(keys::K_V);
+            sleep(Duration::from_millis(200));
+            keys::tap(keys::ENTER);
+        }
+        "pipedrive" => {
+            keys::type_char('/');
+            sleep(Duration::from_millis(450));
+            keys::ctrl(keys::K_V);
+        }
+        "claude" | "chatgpt" => {
+            keys::ctrl(keys::K_K);
+            sleep(Duration::from_millis(450));
+            keys::ctrl(keys::K_V);
+        }
+        _ => {}
+    }
+}
+
+/// Résultat : « typed » (recherche saisie), « not_installed » (application absente :
+/// l'appelant ouvre le site web), « not_foreground » (rien n'a été tapé).
 #[tauri::command]
-async fn native_search_keys(app: AppHandle, recipe: String, cold: Option<bool>) -> Result<bool, String> {
+async fn native_search(app: AppHandle, recipe: String) -> Result<String, String> {
     #[cfg(windows)]
     {
-        let target = match recipe.as_str() {
-            "notion" => "notion.exe",
-            "superhuman" => "superhuman.exe",
-            _ => return Err("Recette inconnue".into()),
-        };
-        let res = tauri::async_runtime::spawn_blocking(move || {
+        let (process, scheme, browser) = recipe_target(&recipe).ok_or("Recette inconnue")?;
+        let res = tauri::async_runtime::spawn_blocking(move || -> String {
             let state = app.state::<AppState>();
-            // attendre que l'application soit au premier plan (démarrage compris)
-            let deadline = Instant::now() + Duration::from_secs(9);
+            let mut cold = false;
+            if !browser {
+                let pids = winapp::pids(&mut state.sys.lock().unwrap(), process);
+                match winapp::find_window(&pids) {
+                    Some(hwnd) => {
+                        winapp::focus(hwnd);
+                    }
+                    None => match scheme.and_then(winapp::exe_for_scheme) {
+                        Some(exe) => {
+                            if std::process::Command::new(exe).spawn().is_err() {
+                                return "not_installed".into();
+                            }
+                            cold = true;
+                        }
+                        None => return "not_installed".into(),
+                    },
+                }
+            }
+            hide_window_inner(&app);
+            // attendre que l'application (ou le navigateur) soit au premier plan
+            let deadline = Instant::now() + Duration::from_secs(if cold { 15 } else { 8 });
+            let is_target = |state: &AppState| {
+                let fg = winapp::foreground_pid();
+                if fg == 0 {
+                    return false;
+                }
+                let mut sys = state.sys.lock().unwrap();
+                if browser {
+                    BROWSERS.iter().any(|b| winapp::pids(&mut sys, b).contains(&fg))
+                } else {
+                    winapp::pids(&mut sys, process).contains(&fg)
+                }
+            };
             loop {
-                if foreground_process(&state).as_deref() == Some(target) {
+                if is_target(&state) {
                     break;
                 }
                 if Instant::now() > deadline {
-                    return false;
+                    return "not_foreground".into();
                 }
-                std::thread::sleep(Duration::from_millis(120));
+                std::thread::sleep(Duration::from_millis(150));
             }
-            // application qui vient de démarrer : on lui laisse le temps de charger
-            std::thread::sleep(Duration::from_millis(if cold.unwrap_or(false) { 4000 } else { 600 }));
-            if foreground_process(&state).as_deref() != Some(target) {
-                return false;
+            // laisser l'application (ou la page) finir de charger
+            std::thread::sleep(Duration::from_millis(if cold { 4500 } else if browser { 3500 } else { 600 }));
+            if !is_target(&state) {
+                return "not_foreground".into();
             }
-            match target {
-                "notion.exe" => {
-                    keys::ctrl(keys::K_P);
-                    std::thread::sleep(Duration::from_millis(450));
-                    keys::ctrl(keys::K_V);
-                }
-                _ => {
-                    keys::type_char('/');
-                    std::thread::sleep(Duration::from_millis(450));
-                    keys::ctrl(keys::K_V);
-                    std::thread::sleep(Duration::from_millis(200));
-                    keys::tap(keys::ENTER);
-                }
-            }
-            true
+            type_recipe(&recipe);
+            "typed".into()
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -523,8 +652,8 @@ async fn native_search_keys(app: AppHandle, recipe: String, cold: Option<bool>) 
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, recipe, cold);
-        Ok(false)
+        let _ = (app, recipe);
+        Ok("not_installed".into())
     }
 }
 
@@ -1195,7 +1324,7 @@ pub fn run() {
             oauth_wait,
             read_json_file,
             write_export_file,
-            native_search_keys,
+            native_search,
             import_ai_history
         ])
         .run(tauri::generate_context!())

@@ -367,11 +367,19 @@ function NotionTab() {
       </div>
 
       <h3>2. Index instantané des titres (facultatif)</h3>
-      <Status ok={st.connected.notion}>
+      <Status ok={st.connected.notion && getIndex("notion").items.length > 0}>
         {st.connected.notion
-          ? `Connecté · ${getIndex("notion").items.length.toLocaleString("fr-FR")} pages indexées`
+          ? getIndex("notion").items.length
+            ? `Connecté · ${getIndex("notion").items.length.toLocaleString("fr-FR")} pages indexées`
+            : "Clé valide, mais aucune page partagée : suivez l'étape 3 ci-dessous"
           : "Non connecté"}
       </Status>
+      {st.connected.notionMcp && (
+        <p className="muted small">
+          Cet index est facultatif : la recherche complète trouve déjà tout. Il sert seulement à afficher les titres dès la
+          première lettre tapée.
+        </p>
+      )}
       {notionErrors.length > 0 && <div className="errors">{notionErrors.join(" — ")}</div>}
       <ol className="steps detailed">
         <li>

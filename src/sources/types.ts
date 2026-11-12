@@ -1,5 +1,8 @@
 import type { OpenMode } from "../app/settings";
 
+/** Recherche saisie dans l'application : raccourci + collage (côté natif). */
+export type Recipe = "notion" | "superhuman" | "pipedrive" | "claude" | "chatgpt";
+
 export type SourceKey = "notion" | "drive" | "pipedrive" | "mail" | "chatgpt" | "claude";
 export type SourceId = "all" | SourceKey;
 
@@ -106,7 +109,7 @@ export interface NativeTarget {
   copy?: string;
   hint?: string;
   /** Recherche saisie automatiquement dans l'application ouverte (raccourci + collage) */
-  recipe?: "notion" | "superhuman";
+  recipe?: Recipe;
 }
 
 export interface ContactInfo {

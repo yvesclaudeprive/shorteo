@@ -115,9 +115,15 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
       return [...ask(""), ...searchIndex(key, [], null, 12)];
     },
     nativeSearch(q) {
-      const [first] = ask(q.raw.trim());
-      return { label: isClaude ? "Demander à Claude" : "Demander à ChatGPT", url: first.url, app: first.app };
+      return {
+        label: isClaude ? "Rechercher dans vos conversations Claude" : "Rechercher dans vos conversations ChatGPT",
+        url: isClaude ? "https://claude.ai/recents" : "https://chatgpt.com/",
+        copy: q.raw.trim(),
+        recipe: isClaude ? "claude" : "chatgpt",
+        hint: "Ouvre l'application et y lance la recherche (Ctrl+K puis la requête)",
+      };
     },
+    nativeFirst: true,
     describe(item) {
       if (item.action === "ask") return { sub: isClaude ? "Nouvelle conversation" : item.kind === "ask-web" ? "Avec recherche web" : "Nouvelle conversation" };
       return { sub: item.text ? item.text.slice(0, 90) : undefined, meta: relativeDate(item.t), badge: "Conversation", badgeTone: "gray" };
@@ -132,7 +138,7 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
     },
     appTarget: isClaude
       ? { name: "Claude", process: "Claude.exe", scheme: "claude", mode: () => settings().claudeOpen }
-      : undefined,
+      : { name: "ChatGPT", process: "ChatGPT.exe", scheme: "chatgpt", mode: () => "app-if-installed" },
   };
 }
 

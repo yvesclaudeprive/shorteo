@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { Recipe } from "../sources/types";
 
 /**
  * Accès aux fonctions natives (Rust). Hors de l'application (navigateur),
@@ -131,10 +132,13 @@ export const platform = {
     }
   },
 
-  /** Tape le raccourci de recherche + colle la requête dans l'application ouverte (Windows). */
-  async nativeSearchKeys(recipe: "notion" | "superhuman", cold = false): Promise<boolean> {
-    if (!isTauri) return false;
-    return invoke<boolean>("native_search_keys", { recipe, cold });
+  /**
+   * Recherche dans l'application (Windows) : premier plan ou lancement, puis raccourci
+   * de recherche + collage. « typed », « not_installed » ou « not_foreground ».
+   */
+  async nativeSearch(recipe: Recipe): Promise<"typed" | "not_installed" | "not_foreground"> {
+    if (!isTauri) return "not_installed";
+    return invoke("native_search", { recipe });
   },
 
   /** Enregistre l'export chiffré : l'utilisateur choisit l'emplacement. */

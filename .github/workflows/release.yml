@@ -8,14 +8,17 @@ on:
     tags: ["v*"]
     paths:
       - "src-tauri/tauri.conf.json"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   build-windows:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4

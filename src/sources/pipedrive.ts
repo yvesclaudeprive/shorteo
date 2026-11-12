@@ -356,7 +356,8 @@ export const pipedriveSource: SourceDef = {
       label: "Rechercher dans Pipedrive",
       url: `${webBase()}/`,
       copy: q.text || q.raw,
-      hint: "Requête copiée : cliquez dans la recherche Pipedrive puis Ctrl+V",
+      recipe: "pipedrive",
+      hint: "Ouvre Pipedrive et y lance la recherche (raccourci / de Pipedrive)",
     };
   },
 
