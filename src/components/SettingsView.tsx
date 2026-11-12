@@ -917,13 +917,13 @@ function SuperhumanTab() {
       </Field>
       <Field
         label="Entrée : ouvrir la recherche Superhuman avec"
-        hint="La requête est saisie dans la recherche, sans être validée (Entrée dans Superhuman l'enverrait à Ask AI). Si « / » ouvre Ask AI chez vous, choisissez la palette."
+        hint="Shorteo ouvre la recherche de Superhuman, y colle votre texte et vos filtres, puis la lance. Sur un clavier AZERTY, la touche de recherche est « : » (Maj+« : » = « / » ouvre Ask AI) : Shorteo utilise la bonne."
       >
         <select
           value={st.superhumanSearchKey}
           onChange={(e) => updateSettings({ superhumanSearchKey: e.target.value as "slash" | "palette" })}
         >
-          <option value="slash">La touche / (raccourci Search)</option>
+          <option value="slash">La touche de recherche (« : » en AZERTY, « / » en QWERTY)</option>
           <option value="palette">Ctrl+K puis la commande « Search »</option>
         </select>
       </Field>
@@ -945,7 +945,7 @@ function SuperhumanTab() {
       </div>
       <Field
         label="Lien de recherche Superhuman (avancé)"
-        hint="Laissez vide : Shorteo ouvre Superhuman et copie la requête (/ puis Ctrl+V). Variables : {q} {email}"
+        hint="Laissez vide : Shorteo ouvre Superhuman et y saisit la recherche. Variables : {q} {email}"
       >
         <input value={st.superhumanSearchUrl} placeholder="(vide)" onChange={(e) => updateSettings({ superhumanSearchUrl: e.target.value })} />
       </Field>
@@ -980,7 +980,8 @@ function AiTab() {
         <SourceTile id="claude" size={22} /> ChatGPT & Claude
       </h2>
       <p className="lead small">
-        « Demander à… » ouvre une nouvelle conversation pré-remplie (Claude s'ouvre dans l'app si elle est installée). Pour
+        « Demander à… » ouvre une nouvelle conversation pré-remplie. Entrée cherche votre texte dans vos conversations
+        (Ctrl+K sur le site ou dans l'app, selon le réglage ci-dessous). Pour
         retrouver vos anciennes conversations, importez l'export officiel de vos données (aucune API ne permet de les lire
         en direct). Refaites l'import de temps en temps pour ajouter les nouvelles.
       </p>
@@ -999,6 +1000,9 @@ function AiTab() {
         </button>
         <span className="muted small">{info("chatgpt")}</span>
       </div>
+      <Field label="Ouverture de ChatGPT">
+        <OpenModeSelect app="ChatGPT" value={st.chatgptOpen} onChange={(v) => updateSettings({ chatgptOpen: v })} />
+      </Field>
       <h3>
         <SourceTile id="claude" size={18} /> Claude
       </h3>

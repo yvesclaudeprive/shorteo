@@ -190,6 +190,42 @@ describe("Drive : sélecteur de dossiers (Mon Drive / Drives partagés)", () => 
   });
 });
 
+describe("Filtres à choix multiple", () => {
+  beforeEach(() => {
+    settingsStore.set({ ...DEFAULT_SETTINGS, connected: { notion: true, notionMcp: true, pipedrive: true, google: true } });
+  });
+  it("cocher deux types puis en décocher un", () => {
+    let v = toggleOperator("devis", driveSource, "type", "doc");
+    v = toggleOperator(v, driveSource, "type", "sheet");
+    expect(v.trim()).toBe("devis type:doc type:sheet");
+    v = toggleOperator(v, driveSource, "type", "doc");
+    expect(v.trim()).toBe("devis type:sheet");
+  });
+  it("filtre à choix unique : la nouvelle valeur remplace l'ancienne", () => {
+    let v = toggleOperator("devis", driveSource, "modifie", "7j");
+    v = toggleOperator(v, driveSource, "modifie", "30j");
+    expect(v.trim()).toBe("devis modifié:30j");
+  });
+  it("mails de A ou de B : {…} pour Gmail, (… OR …) pour Superhuman", () => {
+    const q = parseQuery("projet de:a@x.fr de:b@y.fr est:nonlu", mailSource);
+    expect(toGmailQuery(q)).toBe("{from:a@x.fr from:b@y.fr} is:unread projet");
+    expect(toGmailQuery(q, "superhuman")).toBe("(from:a@x.fr OR from:b@y.fr) is:unread projet");
+  });
+  it("Drive sur le web : deux types ne passent pas, ils sont signalés", () => {
+    const t = driveSource.nativeSearch(parseQuery("devis type:doc type:sheet", driveSource));
+    expect(decodeURIComponent(t.url)).not.toContain("type:");
+    expect(t.dropped?.[0]).toContain("Type de fichier");
+  });
+  it("Notion et Pipedrive : filtres signalés comme non transmis", () => {
+    const n = notionSource.nativeSearch(parseQuery('sanoflore espace:"Pôle Conception"', notionSource));
+    expect(n.copy).toBe("sanoflore");
+    expect(n.dropped).toEqual(["Espace : Pôle Conception"]);
+    const p = pipedriveSource.nativeSearch(parseQuery("sanoflore statut:open statut:won", pipedriveSource));
+    expect(p.copy).toBe("sanoflore");
+    expect(p.dropped?.[0]).toMatch(/^Statut de l'affaire : En cours, Gagnée$/);
+  });
+});
+
 describe("Notion : filtres Espace / Dans sur les résultats de la recherche complète", () => {
   it("espace et dossier parent depuis le chemin", () => {
     settingsStore.set({ connected: { notion: false, notionMcp: true, pipedrive: false, google: false } });
@@ -284,14 +320,38 @@ describe("Entrée : recherche dans l'outil, jamais l'élément survolé", () => 
     expect(calls).toEqual(["open:https://yateo.pipedrive.com/", "search:pipedrive"]);
   });
 
-  it("Notion, Claude, ChatGPT : recherche saisie dans l'application", async () => {
-    for (const s of ["notion", "claude", "chatgpt"] as const) {
+  it("Notion : recherche saisie dans l'application, seul le texte est collé", async () => {
+    setup("notion", 'jeans espace:"Pôle Conception"');
+    const copy = vi.spyOn(platform, "copy").mockResolvedValue();
+    const ns = vi.spyOn(platform, "nativeSearch").mockResolvedValue("typed");
+    await runNative();
+    expect(copy).toHaveBeenCalledWith("jeans");
+    expect(ns).toHaveBeenLastCalledWith("notion");
+  });
+
+  it("Claude et ChatGPT : le site s'ouvre, puis la recherche y est saisie", async () => {
+    for (const [s, url] of [
+      ["claude", "https://claude.ai/recents"],
+      ["chatgpt", "https://chatgpt.com/"],
+    ] as const) {
       setup(s, "jeans");
+      const calls: string[] = [];
       vi.spyOn(platform, "copy").mockResolvedValue();
-      const ns = vi.spyOn(platform, "nativeSearch").mockResolvedValue("typed");
+      vi.spyOn(platform, "openUrl").mockImplementation(async (u) => void calls.push(`open:${u}`));
+      vi.spyOn(platform, "nativeSearch").mockImplementation(async (r) => (calls.push(`search:${r}`), "typed"));
       await runNative();
-      expect(ns).toHaveBeenLastCalledWith(s);
+      expect(calls).toEqual([`open:${url}`, `search:${s}_web`]);
     }
+  });
+
+  it("Superhuman absent : le site s'ouvre et la recherche y est saisie", async () => {
+    setup("mail", "to:hanane");
+    const calls: string[] = [];
+    vi.spyOn(platform, "copy").mockResolvedValue();
+    vi.spyOn(platform, "openUrl").mockImplementation(async (u) => void calls.push(`open:${u}`));
+    vi.spyOn(platform, "nativeSearch").mockImplementation(async (r) => (calls.push(`search:${r}`), r === "superhuman" ? "not_installed" : "typed"));
+    await runNative();
+    expect(calls).toEqual(["search:superhuman", "open:https://mail.superhuman.com/", "search:superhuman_web"]);
   });
 
   it("↓ puis Entrée ouvre bien le résultat", async () => {

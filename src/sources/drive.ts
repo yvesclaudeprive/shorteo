@@ -3,7 +3,7 @@ import { settings } from "../app/settings";
 import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
 import { fullDate, inRange, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
-import { opValues } from "../app/query";
+import { activeFilterLabels, opValues, valueLabel } from "../app/query";
 import { platform } from "../app/platform";
 import { gapi } from "./google";
 import { demoLive } from "./demo";
@@ -444,6 +444,7 @@ export const driveSource: SourceDef = {
     {
       key: "type",
       strict: true,
+      multi: true,
       aliases: ["type"],
       label: "Type de fichier",
       values: () => [
@@ -459,6 +460,7 @@ export const driveSource: SourceDef = {
     },
     {
       key: "owner",
+      multi: true,
       aliases: ["proprio", "owner", "propriétaire"],
       label: "Propriétaire",
       values: () => [{ value: "moi", label: "Moi" }, ...owners()],
@@ -467,6 +469,7 @@ export const driveSource: SourceDef = {
     {
       key: "is",
       strict: true,
+      multi: true,
       aliases: ["est", "is"],
       label: "Statut",
       values: () => [
@@ -476,6 +479,7 @@ export const driveSource: SourceDef = {
     },
     {
       key: "dossier",
+      multi: true,
       aliases: ["dossier", "dans", "in"],
       label: "Dossier",
       values: () => folderValues(),
@@ -540,33 +544,44 @@ export const driveSource: SourceDef = {
   },
 
   nativeSearch(q) {
+    // Drive sur le web : un seul type, un seul propriétaire, un seul dossier à la fois
     const parts: string[] = [];
+    const dropped: string[] = [];
+    const op = (k: string) => driveSource.operators.find((o) => o.key === k)!;
     if (q.text) parts.push(q.text);
-    for (const t of opValues(q, "type")) if (WEB_TYPE[t]) parts.push(`type:${WEB_TYPE[t]}`);
-    for (const o of opValues(q, "owner")) {
-      const n = norm(o);
-      if (n === "moi" || n === "me") parts.push("owner:me");
-      else {
-        const e = owners().find((x) => norm(x.value) === n)?.detail;
-        if (e) parts.push(`owner:${e}`);
-      }
-    }
-    if (opValues(q, "is").includes("suivi")) parts.push("is:starred");
+    const types = opValues(q, "type");
+    if (types.length === 1 && WEB_TYPE[types[0]]) parts.push(`type:${WEB_TYPE[types[0]]}`);
+    else if (types.length > 1) dropped.push(...activeFilterLabels(q, driveSource, ["type"]));
+    const own = opValues(q, "owner");
+    if (own.length === 1) {
+      const n = norm(own[0]);
+      const e = n === "moi" || n === "me" ? "me" : owners().find((x) => norm(x.value) === n)?.detail;
+      if (e) parts.push(`owner:${e}`);
+      else dropped.push(...activeFilterLabels(q, driveSource, ["owner"]));
+    } else if (own.length > 1) dropped.push(...activeFilterLabels(q, driveSource, ["owner"]));
+    const flags = opValues(q, "is");
+    if (flags.includes("suivi")) parts.push("is:starred");
+    if (flags.includes("partage")) dropped.push(`${op("is").label} : ${valueLabel(op("is"), "partage")}`);
     const period = rangeOf(q, "modifie");
     if (period?.from !== undefined) parts.push(`after:${new Date(period.from).toISOString().slice(0, 10)}`);
     if (period?.to !== undefined) parts.push(`before:${new Date(period.to).toISOString().slice(0, 10)}`);
-    // dossier choisi : sans autre critère, on ouvre le dossier ; sinon recherche limitée à ce dossier
-    const folder = opValues(q, "dossier")
+    // dossier : sans autre critère, on ouvre le dossier ; sinon recherche limitée à ce dossier
+    const folders = opValues(q, "dossier")
       .map(folderByValue)
-      .find((f) => !!f);
+      .filter((f): f is ResultItem => !!f);
+    if (folders.length > 1) dropped.push(...activeFilterLabels(q, driveSource, ["dossier"]));
+    const folder = folders.length === 1 ? folders[0] : undefined;
     if (folder && !parts.length) {
       const label = `Ouvrir le dossier « ${folder.title} » dans Drive`;
-      return { label, title: label, url: `https://drive.google.com/drive/folders/${folder.id}` };
+      return { label, title: label, url: `https://drive.google.com/drive/folders/${folder.id}`, dropped };
     }
     if (folder) parts.push(`parent:${folder.id}`);
     return {
       label: "Rechercher dans Drive",
-      url: `https://drive.google.com/drive/search?q=${encodeURIComponent(parts.join(" "))}`,
+      title: parts.length ? undefined : "Ouvrir Google Drive",
+      url: parts.length ? `https://drive.google.com/drive/search?q=${encodeURIComponent(parts.join(" "))}` : "https://drive.google.com/drive/my-drive",
+      copy: undefined,
+      dropped,
     };
   },
 

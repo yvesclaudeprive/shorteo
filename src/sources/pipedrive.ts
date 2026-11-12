@@ -4,7 +4,7 @@ import { settings, fillTemplate } from "../app/settings";
 import { getIndex, searchIndex, setIndex, upsertItems } from "../app/index-store";
 import { fullDate, money, relativeDate } from "../app/format";
 import { norm } from "../app/search";
-import { opValues } from "../app/query";
+import { activeFilterLabels, opValues } from "../app/query";
 import { platform } from "../app/platform";
 import { demoLive } from "./demo";
 import type { ContactInfo, ParsedQuery, ResultItem, SourceDef } from "./types";
@@ -278,10 +278,11 @@ export const pipedriveSource: SourceDef = {
   color: "#22c55e",
   placeholder: "Affaires, contacts, organisations, leads…",
   operators: [
-    { key: "type", strict: true, aliases: ["type"], label: "Type", values: () => TYPE_VALUES },
+    { key: "type", strict: true, multi: true, aliases: ["type"], label: "Type", values: () => TYPE_VALUES },
     {
       key: "statut",
       strict: true,
+      multi: true,
       aliases: ["statut", "status"],
       label: "Statut de l'affaire",
       values: () => [
@@ -292,6 +293,7 @@ export const pipedriveSource: SourceDef = {
     },
     {
       key: "etape",
+      multi: true,
       aliases: ["étape", "stage"],
       label: "Étape du pipeline",
       values: () =>
@@ -299,11 +301,12 @@ export const pipedriveSource: SourceDef = {
     },
     {
       key: "owner",
+      multi: true,
       aliases: ["proprio", "owner", "propriétaire"],
       label: "Propriétaire",
       values: () => Object.values(meta().users ?? {}).map((n) => ({ value: n })),
     },
-    { key: "champ", strict: true, aliases: ["champ", "field"], label: "Chercher dans le champ", values: () => FIELD_VALUES },
+    { key: "champ", strict: true, multi: true, aliases: ["champ", "field"], label: "Chercher dans le champ", values: () => FIELD_VALUES },
   ],
   filterBar: ["type", "statut", "etape", "owner", "champ"],
   chips: [
@@ -355,9 +358,10 @@ export const pipedriveSource: SourceDef = {
     return {
       label: "Rechercher dans Pipedrive",
       url: `${webBase()}/`,
-      copy: q.text || q.raw,
-      recipe: "pipedrive",
-      hint: "Ouvre Pipedrive et y saisit la recherche avec le raccourci / (raccourcis clavier activés dans vos préférences Pipedrive)",
+      copy: q.text,
+      webRecipe: "pipedrive",
+      hint: "Ouvre Pipedrive et y saisit votre texte avec le raccourci / (raccourcis clavier activés dans vos préférences Pipedrive)",
+      dropped: activeFilterLabels(q, pipedriveSource),
     };
   },
 

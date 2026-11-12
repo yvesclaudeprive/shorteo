@@ -388,7 +388,7 @@ pub mod keys {
         GetAsyncKeyState, MapVirtualKeyW, SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
         KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC, VK_CONTROL, VK_DELETE, VK_DIVIDE, VK_DOWN, VK_END,
         VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT, VK_LWIN, VK_MENU, VK_NEXT, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT,
-        VK_RMENU, VK_RWIN, VK_SHIFT, VK_UP,
+        VK_OEM_2, VK_RMENU, VK_RWIN, VK_SHIFT, VK_UP,
     };
 
     fn extended(vk: u16) -> bool {
@@ -487,6 +487,8 @@ pub mod keys {
     pub const K_V: u16 = 0x56;
     pub const ENTER: u16 = VK_RETURN;
     pub const ESCAPE: u16 = VK_ESCAPE;
+    /// Touche « / » d'un clavier américain = touche « : » d'un clavier AZERTY (code 191).
+    pub const SEARCH_KEY: u16 = VK_OEM_2;
 }
 
 /// Caractéristiques d'une fenêtre candidate (dans l'ordre d'empilement, la plus haute d'abord).
@@ -647,15 +649,28 @@ pub mod winapp {
     }
 }
 
-/// Recettes : processus, protocole (pour lancer l'application), navigateur ou non.
+/// Cible d'une recette : application (processus + protocole pour la lancer) ou
+/// onglet de navigateur (mot attendu dans le titre de l'onglet une fois chargé).
 #[cfg(windows)]
-fn recipe_target(recipe: &str) -> Option<(&'static str, Option<&'static str>, bool)> {
+struct Target {
+    process: &'static str,
+    scheme: Option<&'static str>,
+    browser_title: Option<&'static str>,
+}
+
+#[cfg(windows)]
+fn recipe_target(recipe: &str) -> Option<Target> {
+    let app = |process, scheme| Some(Target { process, scheme, browser_title: None });
+    let web = |title| Some(Target { process: "", scheme: None, browser_title: Some(title) });
     match recipe {
-        "notion" => Some(("notion.exe", Some("notion"), false)),
-        "superhuman" | "superhuman_palette" => Some(("superhuman.exe", Some("superhuman"), false)),
-        "claude" => Some(("claude.exe", Some("claude"), false)),
-        "chatgpt" => Some(("chatgpt.exe", None, false)),
-        "pipedrive" => Some(("", None, true)),
+        "notion" => app("notion.exe", Some("notion")),
+        "superhuman" | "superhuman_palette" => app("superhuman.exe", Some("superhuman")),
+        "claude" => app("claude.exe", Some("claude")),
+        "chatgpt" => app("chatgpt.exe", None),
+        "pipedrive" => web("pipedrive"),
+        "superhuman_web" => web("superhuman"),
+        "claude_web" => web("claude"),
+        "chatgpt_web" => web("chatgpt"),
         _ => None,
     }
 }
@@ -665,9 +680,10 @@ const BROWSERS: &[&str] = &[
     "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
 ];
 
-/// Séquence de touches de chaque recette. Jamais d'Entrée qui validerait la requête :
-/// la recherche est seulement saisie (pas de brouillon, pas d'« Ask AI » lancé).
-/// Renvoie le nombre de touches acceptées par Windows.
+/// Séquence de touches de chaque recette. Renvoie le nombre de touches acceptées par Windows.
+/// Superhuman : la touche de la recherche est celle du « / » d'un clavier américain, soit
+/// la touche « : » d'un clavier AZERTY, SANS Maj (avec Maj, Superhuman ouvre Ask AI).
+/// Entrée n'est envoyée que dans la recherche de Superhuman (elle lance la recherche).
 #[cfg(windows)]
 fn type_recipe(recipe: &str) -> u32 {
     let ms = |n: u64| std::thread::sleep(Duration::from_millis(n));
@@ -681,13 +697,15 @@ fn type_recipe(recipe: &str) -> u32 {
             ms(900);
             n += keys::ctrl(keys::K_V);
         }
-        "superhuman" => {
+        "superhuman" | "superhuman_web" => {
             // Échap : ferme un brouillon ouvert (gardé en brouillon) pour ne rien y taper
             n += keys::tap(keys::ESCAPE);
             ms(250);
-            n += keys::type_char('/');
+            n += keys::tap(keys::SEARCH_KEY);
             ms(700);
             n += keys::ctrl(keys::K_V);
+            ms(400);
+            n += keys::tap(keys::ENTER);
         }
         "superhuman_palette" => {
             // variante : palette de commandes (Ctrl+K) → commande « Search »
@@ -700,15 +718,18 @@ fn type_recipe(recipe: &str) -> u32 {
             n += keys::tap(keys::ENTER);
             ms(800);
             n += keys::ctrl(keys::K_V);
+            ms(400);
+            n += keys::tap(keys::ENTER);
         }
         "pipedrive" => {
             n += keys::type_char('/');
             ms(800);
             n += keys::ctrl(keys::K_V);
         }
-        "claude" | "chatgpt" => {
+        "claude" | "chatgpt" | "claude_web" | "chatgpt_web" => {
+            // Ctrl+K : recherche dans les conversations ; la requête est saisie, sans Entrée
             n += keys::ctrl(keys::K_K);
-            ms(700);
+            ms(800);
             n += keys::ctrl(keys::K_V);
         }
         _ => {}
@@ -723,7 +744,8 @@ fn type_recipe(recipe: &str) -> u32 {
 async fn native_search(app: AppHandle, recipe: String) -> Result<String, String> {
     #[cfg(windows)]
     {
-        let (process, scheme, browser) = recipe_target(&recipe).ok_or("Recette inconnue")?;
+        let Target { process, scheme, browser_title } = recipe_target(&recipe).ok_or("Recette inconnue")?;
+        let browser = browser_title.is_some();
         let res = tauri::async_runtime::spawn_blocking(move || -> String {
             let state = app.state::<AppState>();
             let t0 = Instant::now();
@@ -789,16 +811,17 @@ async fn native_search(app: AppHandle, recipe: String) -> Result<String, String>
                 std::thread::sleep(Duration::from_millis(150));
             }
             log(format!("au premier plan ({})", fg_name()));
-            if browser {
-                // attendre que l'onglet Pipedrive soit chargé (titre), puis que l'appli démarre
+            if let Some(word) = browser_title {
+                // attendre que l'onglet soit chargé (son titre contient le nom du site),
+                // puis que l'application web démarre
                 let deadline = Instant::now() + Duration::from_secs(15);
                 loop {
-                    if winapp::foreground_title().to_lowercase().contains("pipedrive") {
-                        log("onglet Pipedrive chargé".into());
+                    if winapp::foreground_title().to_lowercase().contains(word) {
+                        log(format!("onglet « {word} » chargé"));
                         break;
                     }
                     if Instant::now() > deadline {
-                        log("titre « Pipedrive » jamais vu : essai quand même".into());
+                        log(format!("titre « {word} » jamais vu : essai quand même"));
                         break;
                     }
                     std::thread::sleep(Duration::from_millis(200));

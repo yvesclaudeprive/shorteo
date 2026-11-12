@@ -201,8 +201,8 @@ export function toggleOperator(input: string, source: SourceDef, opKey: string, 
           removed = true;
           continue;
         }
-        // même filtre, autre valeur : on remplace
-        continue;
+        // même filtre, autre valeur : on garde (choix multiple) ou on remplace
+        if (!o.multi) continue;
       }
     }
     kept.push(lx.raw);
@@ -245,4 +245,16 @@ export function removeOperator(input: string, source: SourceDef, opKey: string):
 export function valueLabel(op: OperatorDef, value: string): string {
   const v = (op.values?.() ?? []).find((x) => norm(x.value) === norm(value));
   return v?.label ?? (op.dates ? rangeLabel(value) : null) ?? value;
+}
+
+/** Filtres actifs sous forme lisible (« Espace : Pôle Conception »), pour les clés données (toutes par défaut). */
+export function activeFilterLabels(q: ParsedQuery, source: SourceDef, keys?: string[]): string[] {
+  const out: string[] = [];
+  for (const op of source.operators) {
+    if (keys && !keys.includes(op.key)) continue;
+    const vals = q.ops.filter((o) => o.key === op.key);
+    if (!vals.length) continue;
+    out.push(`${op.label} : ${vals.map((v) => (v.negate ? "sauf " : "") + valueLabel(op, v.value)).join(", ")}`);
+  }
+  return out;
 }

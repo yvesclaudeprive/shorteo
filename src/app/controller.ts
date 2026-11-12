@@ -128,10 +128,11 @@ function nativeRow(src: SourceDef, target: NativeTarget, query: string): ResultI
     source: src.key,
     kind: "native",
     action: "native",
-    title: target.title ?? `${target.label} : « ${query.trim()} »`,
+    title: target.title ?? (target.copy !== undefined && !target.copy.trim() ? target.label : `${target.label} : « ${(target.copy ?? query).trim()} »`),
     url: target.url,
     app: target.app,
     snippet: target.hint,
+    dropped: target.dropped?.length ? target.dropped : undefined,
   };
 }
 
@@ -496,6 +497,34 @@ export function clearFilter(opKey: string): void {
   focusInput();
 }
 
+/** Coche / décoche une valeur d'un filtre à choix multiple, sans fermer le menu ouvert. */
+export function toggleFilterValue(opKey: string, value: string): void {
+  const s = ui.get();
+  const src = sourceDef(s.source);
+  if (!src) return;
+  const v = toggleOperator(s.query, src, opKey, value);
+  ui.set({ mode: "search" });
+  setQuery(v, v.length);
+}
+
+/** Décoche toutes les valeurs d'un filtre, sans fermer le menu ouvert. */
+export function clearFilterValues(opKey: string): void {
+  const s = ui.get();
+  const src = sourceDef(s.source);
+  if (!src) return;
+  const v = removeOperator(s.query, src, opKey);
+  setQuery(v, v.length);
+}
+
+/** Retire tous les filtres (le texte cherché reste). */
+export function clearAllFilters(): void {
+  const s = ui.get();
+  const v = carryQuery(s.query, null).trim();
+  const out = v ? v + " " : "";
+  setQuery(out, out.length);
+  focusInput();
+}
+
 /** Ajoute « clé: » en fin de barre : les valeurs possibles s'affichent aussitôt. */
 export function insertOperator(alias: string): void {
   const s = ui.get();
@@ -561,6 +590,17 @@ async function resolveUrl(source: SourceKey, web: string, app?: string, forceWeb
   return (mode === "app-if-running" ? running : installed) ? app : web;
 }
 
+/** Faut-il passer par l'application de bureau (réglage « Ouvrir dans ») ? */
+async function useApp(src: SourceDef): Promise<boolean> {
+  const at = src.appTarget;
+  if (!at) return true;
+  const mode = at.mode();
+  if (mode === "browser") return false;
+  if (mode === "app-if-installed") return true;
+  const st = await platform.appsStatus([at.process], [at.scheme]);
+  return !!st.running[at.process];
+}
+
 export async function hideWindow(): Promise<void> {
   ui.set({ hiddenAt: Date.now() });
   await platform.hide();
@@ -577,22 +617,25 @@ export async function runNative(source?: SourceKey, extra?: NativeTarget): Promi
   const src = SOURCES[key];
   const target = extra ?? src.nativeSearch(parseQuery(s.query, src));
   try {
-    if (target.copy) await platform.copy(target.copy);
-    const mode = src.appTarget?.mode();
-    if (target.recipe && mode !== "browser") {
-      // Pipedrive est un site : on l'ouvre, puis la recherche y est saisie
-      if (target.recipe === "pipedrive") await platform.openUrl(target.url);
+    // la requête à saisir (éventuellement vide : rien d'ancien n'est collé)
+    if (target.copy !== undefined) await platform.copy(target.copy);
+    // 1. dans l'application de bureau, si les réglages le permettent
+    if (target.recipe && (await useApp(src))) {
       const r = await platform.nativeSearch(target.recipe);
       if (r !== "not_installed") {
         ui.set({ hiddenAt: Date.now() });
         return;
       }
-      if (target.recipe === "pipedrive") {
-        await afterOpen();
+    }
+    // 2. sinon sur le site : ouverture de la page, puis saisie dans l'onglet
+    await platform.openUrl(target.url);
+    if (target.webRecipe) {
+      const r = await platform.nativeSearch(target.webRecipe);
+      if (r !== "not_installed") {
+        ui.set({ hiddenAt: Date.now() });
         return;
       }
     }
-    await platform.openUrl(target.url);
     await afterOpen();
   } catch (e) {
     toast(errorText(e), "error");

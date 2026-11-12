@@ -67,6 +67,9 @@ fn bloc_notes_premier_plan_frappe_et_collage() {
     keys::ctrl(keys::K_V);
     sleep(Duration::from_millis(400));
     assert!(keys::type_text(" search") > 0, "SendInput a refusé le mot");
+    sleep(Duration::from_millis(300));
+    // touche de recherche de Superhuman : « / » américain (« : » en AZERTY), SANS Maj
+    assert!(keys::tap(keys::SEARCH_KEY) > 0, "SendInput a refusé la touche de recherche");
     sleep(Duration::from_millis(500));
 
     // 4. relecture : tout sélectionner + copier
@@ -79,5 +82,8 @@ fn bloc_notes_premier_plan_frappe_et_collage() {
 
     let _ = child.kill();
     let _ = Command::new("taskkill").args(["/F", "/IM", "notepad.exe"]).status();
-    assert_eq!(text, "/to:hanane search", "texte obtenu dans le Bloc-notes");
+    // clavier américain (CI) : « / » ; AZERTY : « : » — jamais « ? » (= Maj enfoncée)
+    let (body, last) = text.split_at(text.len() - 1);
+    assert_eq!(body, "/to:hanane search", "texte obtenu dans le Bloc-notes : {text}");
+    assert!(last == "/" || last == ":", "touche de recherche : « {last} » au lieu de « / » ou « : »");
 }

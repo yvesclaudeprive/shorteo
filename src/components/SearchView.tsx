@@ -77,7 +77,11 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
               : highlight(item.title, tokens).map((p, i) => (p.hit ? <mark key={i}>{p.text}</mark> : <span key={i}>{p.text}</span>))}
           </span>
         </div>
-        {item.action === "native" && item.snippet ? (
+        {item.action === "native" && item.dropped ? (
+          <div className="row-sub row-dropped" title={item.dropped.join("\n")}>
+            {src.label} ne gère pas : {item.dropped.map((x) => x.split(" : ")[0]).join(", ")} — filtré ici seulement
+          </div>
+        ) : item.action === "native" && item.snippet ? (
           <div className="row-sub">{item.snippet}</div>
         ) : d.sub ? (
           <div className="row-sub">{d.sub}</div>
@@ -232,8 +236,20 @@ function Preview() {
           <SourceTile id={item.source} size={34} />
           <div className="pv-title">{item.title}</div>
         </div>
-        <p className="pv-note">Ouvre la recherche native de l'outil avec la même requête.</p>
         {item.snippet && <p className="pv-note strong">{item.snippet}</p>}
+        {item.dropped ? (
+          <div className="pv-dropped">
+            <div className="pv-dropped-title">Filtres que {src.label} ne peut pas recevoir</div>
+            <ul>
+              {item.dropped.map((x) => (
+                <li key={x}>{x}</li>
+              ))}
+            </ul>
+            <p>Ils restent appliqués aux résultats de Shorteo, juste en dessous.</p>
+          </div>
+        ) : (
+          <p className="pv-note">La recherche est lancée dans l'outil avec votre texte et vos filtres.</p>
+        )}
         <div className="pv-actions">
           <button className="btn primary" onClick={() => void runNative(item.source)}>
             Lancer <kbd>⇧↵</kbd>

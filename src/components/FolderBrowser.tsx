@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { Check, ChevronLeft, ChevronRight, Folder, HardDrive, Search, Users, UserRound } from "lucide-react";
 import { useStore } from "../app/store";
 import { indexVersion, getIndex } from "../app/index-store";
-import { applyFilter, focusInput } from "../app/controller";
+import { clearFilterValues, focusInput, toggleFilterValue, ui } from "../app/controller";
+import { opValues, parseQuery } from "../app/query";
 import {
   childCount,
   childFolders,
+  driveSource,
   ensureDriveRoots,
+  folderByValue,
   folderPath,
   folderRoots,
   PATH_SEP,
@@ -89,10 +92,11 @@ function RowIcon({ icon }: { icon: Row["icon"] }) {
 }
 
 /**
- * Choix d'un dossier Drive en naviguant dans l'arborescence (filtre « Dossier »),
- * à la manière d'un menu mobile : chaque niveau glisse depuis la droite.
+ * Choix d'un ou plusieurs dossiers Drive en naviguant dans l'arborescence (filtre
+ * « Dossier »), à la manière d'un menu mobile : chaque niveau glisse depuis la droite.
  * Départ : Mon Drive / Drives partagés (/ Partagés avec moi).
- * Clic ou → : ouvrir ; « Choisir » ou Entrée : filtrer sur ce dossier ; ← : revenir.
+ * Case à cocher, Entrée ou Espace : cocher / décocher ; clic sur le nom ou → : ouvrir ;
+ * ← : revenir ; OK ou Échap : fermer. Les dossiers cochés s'additionnent (l'un OU l'autre).
  */
 export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose: () => void }) {
   const { v } = useStore(indexVersion);
@@ -105,6 +109,20 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
   const [index, setIndex] = useState(0);
   const [rootsTick, setRootsTick] = useState(0);
   const level = stack[stack.length - 1];
+  const query = useStore(ui).query;
+
+  // dossiers cochés : identifiant → valeur écrite dans la barre (pour pouvoir la retirer)
+  const chosen = useMemo(() => {
+    const vals = opValues(parseQuery(query, driveSource), "dossier");
+    const byId = new Map<string, string>();
+    const names: string[] = [];
+    for (const val of vals) {
+      const f = folderByValue(val);
+      if (f) byId.set(f.id, val);
+      names.push(f?.title ?? val.split(PATH_SEP).pop() ?? val);
+    }
+    return { byId, names, count: vals.length };
+  }, [query, v, rootsTick]);
 
   // racine « Mon Drive » et drives partagés : chargés à la première ouverture
   useEffect(() => {
@@ -147,9 +165,13 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [q, stack]);
 
-  const choose = (f: ResultItem) => {
+  const toggle = (f: ResultItem) => {
+    toggleFilterValue("dossier", chosen.byId.get(f.id) ?? folderPath(f).join(PATH_SEP));
+    inputRef.current?.focus();
+  };
+  const close = () => {
     onClose();
-    applyFilter("dossier", folderPath(f).join(PATH_SEP));
+    focusInput();
   };
   const open = (l: Level) => {
     setQ("");
@@ -178,15 +200,14 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
     } else if ((e.key === "ArrowLeft" || e.key === "Backspace") && !q) {
       e.preventDefault();
       back();
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" || (e.key === " " && !q)) {
       e.preventDefault();
-      if (r?.item) choose(r.item);
+      if (r?.item) toggle(r.item);
       else if (r?.level) open(r.level);
-      else if (level.kind === "folder") choose(level.item);
+      else if (level.kind === "folder") toggle(level.item);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
-      focusInput();
+      close();
     }
   };
 
@@ -253,47 +274,75 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
       <div ref={listRef} className="fmenu-list fmenu-slide" role="listbox">
         <div key={q ? "search" : levelKey(level)} className={`fpanel ${q ? "none" : dir}`}>
           {!q && level.kind === "folder" && (
-            <button className="folder-choose-current" onClick={() => choose(level.item)}>
-              <Check size={14} />
-              <span className="folder-choose-name">Choisir « {level.item.title} »</span>
+            <button
+              className={`folder-choose-current ${chosen.byId.has(level.item.id) ? "on" : ""}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggle(level.item)}
+            >
+              <span className={`fcheck ${chosen.byId.has(level.item.id) ? "on" : ""}`}>
+                {chosen.byId.has(level.item.id) && <Check size={11} strokeWidth={3} />}
+              </span>
+              <span className="folder-choose-name">Tout « {level.item.title} »</span>
               <span className="folder-choose-sub">sous-dossiers compris</span>
             </button>
           )}
-          {rows.map((r, i) => (
-            <div
-              key={r.key}
-              className={`folder-row ${i === index ? "sel" : ""} ${r.item ? "" : "folder-row-root"}`}
-              onMouseEnter={() => setIndex(i)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                // dossier sans sous-dossier (ou résultat de recherche) : choisi directement
-                if (r.item && (q || r.count === 0)) choose(r.item);
-                else if (r.level) open(r.level);
-              }}
-            >
-              <RowIcon icon={r.icon} />
-              <span className="folder-name">
-                {r.label}
-                {r.path && <span className="folder-path">{r.path}</span>}
-              </span>
-              {!q && r.count > 0 && <span className="folder-count">{r.count}</span>}
-              {r.item && (
-                <button
-                  className="folder-pick"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    choose(r.item!);
-                  }}
-                >
-                  Choisir
-                </button>
-              )}
-              {!q && (r.count > 0 || !r.item) && <ChevronRight size={14} className="folder-chevron" />}
-            </div>
-          ))}
+          {rows.map((r, i) => {
+            const on = !!r.item && chosen.byId.has(r.item.id);
+            const opens = !q && (r.count > 0 || !r.item);
+            return (
+              <div
+                key={r.key}
+                role="option"
+                aria-selected={on}
+                className={`folder-row ${i === index ? "sel" : ""} ${on ? "on" : ""} ${r.item ? "" : "folder-row-root"}`}
+                onMouseEnter={() => setIndex(i)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  // clic sur le nom : ouvre le dossier s'il en contient d'autres, sinon le coche
+                  if (opens && r.level) open(r.level);
+                  else if (r.item) toggle(r.item);
+                }}
+              >
+                {r.item ? (
+                  <button
+                    className={`fcheck ${on ? "on" : ""}`}
+                    title={on ? "Décocher" : "Cocher"}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggle(r.item!);
+                    }}
+                  >
+                    {on && <Check size={11} strokeWidth={3} />}
+                  </button>
+                ) : null}
+                <RowIcon icon={r.icon} />
+                <span className="folder-name">
+                  {r.label}
+                  {r.path && <span className="folder-path">{r.path}</span>}
+                </span>
+                {!q && r.count > 0 && <span className="folder-count">{r.count}</span>}
+                {opens && <ChevronRight size={14} className="folder-chevron" />}
+              </div>
+            );
+          })}
           {!rows.length && <div className="fmenu-empty">{empty}</div>}
         </div>
+      </div>
+      <div className="fmenu-foot">
+        <span className="fmenu-count" title={chosen.names.join("\n")}>
+          {chosen.count
+            ? `${chosen.count} dossier${chosen.count > 1 ? "s" : ""} : ${chosen.names.join(", ")}`
+            : "Cochez un ou plusieurs dossiers"}
+        </span>
+        {chosen.count > 0 && (
+          <button className="btn small btn-plain" onMouseDown={(e) => e.preventDefault()} onClick={() => clearFilterValues("dossier")}>
+            Effacer
+          </button>
+        )}
+        <button className="btn small primary" onMouseDown={(e) => e.preventDefault()} onClick={close}>
+          OK
+        </button>
       </div>
     </div>
   );

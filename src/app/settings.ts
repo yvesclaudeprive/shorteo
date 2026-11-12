@@ -27,6 +27,7 @@ export interface Settings {
   notionOpen: OpenMode;
   superhumanOpen: OpenMode;
   claudeOpen: OpenMode;
+  chatgptOpen: OpenMode;
   /** Modèles d'URL (variables : {email} {threadId} {q}). Vide = comportement par défaut. */
   superhumanThreadUrl: string;
   superhumanSearchUrl: string;
@@ -53,7 +54,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notionMe: "",
   notionOpen: "app-if-installed",
   superhumanOpen: "app-if-installed",
-  claudeOpen: "app-if-installed",
+  claudeOpen: "browser",
+  chatgptOpen: "browser",
   superhumanThreadUrl: "https://mail.superhuman.com/{email}/thread/{threadId}",
   superhumanSearchUrl: "",
   superhumanSearchKey: "slash",
@@ -67,7 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
     "Password client en cours",
     "Password prospects en cours",
   ],
-  schema: 2,
+  schema: 3,
 };
 
 export const settingsStore = createStore<Settings>({ ...DEFAULT_SETTINGS });
@@ -98,6 +100,11 @@ export async function loadSettings(): Promise<boolean> {
     // v2 : Notion et Superhuman s'ouvrent dans leur application dès qu'elle est installée
     if ((parsed.schema ?? 1) < 2) {
       settingsStore.set({ notionOpen: "app-if-installed", superhumanOpen: "app-if-installed", schema: 2 });
+      void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
+    }
+    // v3 : Claude et ChatGPT s'ouvrent sur leur site (recherche saisie dans l'onglet)
+    if ((parsed.schema ?? 1) < 3) {
+      settingsStore.set({ claudeOpen: "browser", chatgptOpen: "browser", schema: 3 });
       void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
     }
   } catch {

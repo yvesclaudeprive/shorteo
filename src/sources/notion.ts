@@ -4,7 +4,7 @@ import { settings, fillTemplate } from "../app/settings";
 import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
 import { fullDate, inRange, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
-import { opValues } from "../app/query";
+import { activeFilterLabels, opValues } from "../app/query";
 import { platform } from "../app/platform";
 import { demoLive } from "./demo";
 import { mcpSearch } from "./notion-mcp";
@@ -268,6 +268,7 @@ export const notionSource: SourceDef = {
     {
       key: "type",
       strict: true,
+      multi: true,
       aliases: ["type"],
       label: "Type",
       values: () => [
@@ -275,10 +276,10 @@ export const notionSource: SourceDef = {
         { value: "base", label: "Bases de données", aliases: ["database", "db", "bdd"] },
       ],
     },
-    { key: "par", aliases: ["par", "auteur", "by"], label: "Créé par", values: userValues },
-    { key: "modifie_par", aliases: ["modifié_par", "edited_by"], label: "Modifié par", values: userValues },
-    { key: "espace", aliases: ["espace", "space", "teamspace"], label: "Espace", values: spaces },
-    { key: "dans", aliases: ["dans", "in"], label: "Dans", values: containers },
+    { key: "par", multi: true, aliases: ["par", "auteur", "by"], label: "Créé par", values: userValues },
+    { key: "modifie_par", multi: true, aliases: ["modifié_par", "edited_by"], label: "Modifié par", values: userValues },
+    { key: "espace", multi: true, aliases: ["espace", "space", "teamspace"], label: "Espace", values: spaces },
+    { key: "dans", multi: true, aliases: ["dans", "in"], label: "Dans", values: containers },
     { key: "modifie", aliases: ["modifié", "modif", "edited"], label: "Modifié", values: () => PERIOD_VALUES, dates: true },
     { key: "cree", aliases: ["créé", "created"], label: "Créé", values: () => PERIOD_VALUES, dates: true },
     {
@@ -391,9 +392,10 @@ export const notionSource: SourceDef = {
       label: "Rechercher dans Notion",
       url: "https://www.notion.so/",
       app: "notion://www.notion.so/",
-      copy: q.text || q.raw,
+      copy: q.text,
       recipe: "notion",
-      hint: "Ouvre Notion et y lance la recherche (dans le navigateur : Ctrl+K puis Ctrl+V)",
+      hint: "Ouvre la recherche de Notion avec votre texte",
+      dropped: activeFilterLabels(q, notionSource),
     };
   },
 

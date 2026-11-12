@@ -1,7 +1,7 @@
 import { settings } from "../app/settings";
 import { getIndex, searchIndex, setIndex } from "../app/index-store";
 import { fullDate, relativeDate, inRange, periodRange, PERIOD_VALUES } from "../app/format";
-import { opValues } from "../app/query";
+import { activeFilterLabels, opValues } from "../app/query";
 import { platform, type ImportedConversation } from "../app/platform";
 import type { ParsedQuery, ResultItem, SourceDef, SourceKey } from "./types";
 
@@ -95,7 +95,7 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
     ];
   };
 
-  return {
+  const self: SourceDef = {
     key,
     label,
     color: isClaude ? "#e07a55" : "#10a37f",
@@ -115,12 +115,15 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
       return [...ask(""), ...searchIndex(key, [], null, 12)];
     },
     nativeSearch(q) {
+      const web = settings()[isClaude ? "claudeOpen" : "chatgptOpen"] === "browser";
       return {
         label: isClaude ? "Rechercher dans vos conversations Claude" : "Rechercher dans vos conversations ChatGPT",
         url: isClaude ? "https://claude.ai/recents" : "https://chatgpt.com/",
-        copy: q.raw.trim(),
+        copy: q.text,
         recipe: isClaude ? "claude" : "chatgpt",
-        hint: "Ouvre l'application et y lance la recherche (Ctrl+K puis la requête)",
+        webRecipe: isClaude ? "claude_web" : "chatgpt_web",
+        hint: `Ouvre ${web ? (isClaude ? "claude.ai" : "chatgpt.com") : "l'application"} et y cherche votre texte dans vos conversations (Ctrl+K)`,
+        dropped: activeFilterLabels(q, self),
       };
     },
     nativeFirst: true,
@@ -138,8 +141,9 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
     },
     appTarget: isClaude
       ? { name: "Claude", process: "Claude.exe", scheme: "claude", mode: () => settings().claudeOpen }
-      : { name: "ChatGPT", process: "ChatGPT.exe", scheme: "chatgpt", mode: () => "app-if-installed" },
+      : { name: "ChatGPT", process: "ChatGPT.exe", scheme: "chatgpt", mode: () => settings().chatgptOpen },
   };
+  return self;
 }
 
 export const chatgptSource = makeSource("chatgpt");

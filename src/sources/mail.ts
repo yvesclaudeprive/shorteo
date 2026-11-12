@@ -124,13 +124,14 @@ function dateValues(): OperatorValue[] {
 
 /** Alias français → opérateurs Gmail. */
 const OPERATORS = [
-  { key: "from", aliases: ["de", "from", "expediteur"], label: "Expéditeur", values: contactValues, complete: contactCompletions },
-  { key: "to", aliases: ["à", "a", "to", "pour"], label: "Destinataire", values: contactValues, complete: contactCompletions },
-  { key: "cc", aliases: ["cc"], label: "En copie", values: contactValues, complete: contactCompletions },
+  { key: "from", multi: true, aliases: ["de", "from", "expediteur"], label: "Expéditeur", values: contactValues, complete: contactCompletions },
+  { key: "to", multi: true, aliases: ["à", "a", "to", "pour"], label: "Destinataire", values: contactValues, complete: contactCompletions },
+  { key: "cc", multi: true, aliases: ["cc"], label: "En copie", values: contactValues, complete: contactCompletions },
   { key: "subject", aliases: ["objet", "subject", "sujet"], label: "Objet" },
   {
     key: "has",
     strict: true,
+    multi: true,
     aliases: ["avec", "has"],
     label: "Contient",
     values: () => [
@@ -146,6 +147,7 @@ const OPERATORS = [
   {
     key: "is",
     strict: true,
+    multi: true,
     aliases: ["est", "is"],
     label: "État",
     values: () => [
@@ -160,6 +162,7 @@ const OPERATORS = [
   {
     key: "in",
     strict: true,
+    multi: true,
     aliases: ["dans", "in"],
     label: "Dossier",
     values: () => [
@@ -173,6 +176,7 @@ const OPERATORS = [
   },
   {
     key: "label",
+    multi: true,
     aliases: ["libellé", "label"],
     label: "Libellé",
     values: () => labels().map((l) => ({ value: l })),
@@ -203,6 +207,7 @@ const OPERATORS = [
   },
   {
     key: "filename",
+    multi: true,
     aliases: ["fichier", "filename"],
     label: "Pièce jointe nommée",
     values: () => ["pdf", "docx", "xlsx", "pptx", "csv", "png", "jpg", "zip"].map((v) => ({ value: v })),
@@ -216,6 +221,7 @@ const OPERATORS = [
   {
     key: "category",
     strict: true,
+    multi: true,
     aliases: ["catégorie", "category"],
     label: "Catégorie",
     values: () => [
@@ -234,14 +240,31 @@ const gday = (ms: number) => {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 };
 
-export function toGmailQuery(q: ParsedQuery): string {
+/** Filtres où plusieurs valeurs veulent dire « l'une OU l'autre » (de : A ou B). */
+const OR_KEYS = new Set(["from", "to", "cc", "in", "label", "category", "filename"]);
+
+/**
+ * Requête Gmail (opérateurs anglais). Plusieurs valeurs d'un même filtre « OU » :
+ * {from:a from:b} pour Gmail, (from:a OR from:b) pour la barre de Superhuman.
+ */
+export function toGmailQuery(q: ParsedQuery, style: "gmail" | "superhuman" = "gmail"): string {
   const parts: string[] = [];
+  const grouped = new Set<string>();
   for (const o of q.ops) {
     if (o.key === "periode") {
       const r = periodRange(o.value);
       if (r?.from !== undefined) parts.push(`after:${gday(r.from - 86400000)}`);
       if (r?.to !== undefined) parts.push(`before:${gday(r.to)}`);
       continue;
+    }
+    if (!o.negate && OR_KEYS.has(o.key)) {
+      if (grouped.has(o.key)) continue;
+      const same = q.ops.filter((x) => x.key === o.key && !x.negate).map((x) => `${o.key}:${quoteIfNeeded(x.value)}`);
+      if (same.length > 1) {
+        grouped.add(o.key);
+        parts.push(style === "gmail" ? `{${same.join(" ")}}` : `(${same.join(" OR ")})`);
+        continue;
+      }
     }
     parts.push(`${o.negate ? "-" : ""}${o.key}:${quoteIfNeeded(o.value)}`);
   }
@@ -411,7 +434,7 @@ export const mailSource: SourceDef = {
 
   nativeSearch(q) {
     const s = settings();
-    const gq = toGmailQuery(q);
+    const gq = toGmailQuery(q, "superhuman");
     if (s.superhumanSearchUrl) {
       const url = fillTemplate(s.superhumanSearchUrl, { q: gq, email: s.mailAccount }).replace(/%40/g, "@");
       return {
@@ -426,7 +449,8 @@ export const mailSource: SourceDef = {
       app: "superhuman://",
       copy: gq,
       recipe: s.superhumanSearchKey === "palette" ? "superhuman_palette" : "superhuman",
-      hint: "Ouvre Superhuman et y saisit la recherche, sans valider (dans le navigateur : / puis Ctrl+V)",
+      webRecipe: "superhuman_web",
+      hint: "Ouvre la recherche de Superhuman avec votre texte et vos filtres, et la lance",
     };
   },
 

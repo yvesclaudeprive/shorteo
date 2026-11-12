@@ -1,8 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { ChevronDown, Plus, X, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, X, Search } from "lucide-react";
 import { useStore } from "../app/store";
-import { applyFilter, clearFilter, focusInput, insertOperator, toggleChip, ui } from "../app/controller";
-import { hasOp, parseQuery, valueLabel } from "../app/query";
+import {
+  applyFilter,
+  clearAllFilters,
+  clearFilter,
+  clearFilterValues,
+  focusInput,
+  insertOperator,
+  toggleChip,
+  toggleFilterValue,
+  ui,
+} from "../app/controller";
+import { hasOp, opValues, parseQuery, valueLabel } from "../app/query";
 import { norm } from "../app/search";
 import { sourceDef } from "../sources/registry";
 import type { OperatorDef, OperatorValue, SourceDef } from "../sources/types";
@@ -20,8 +30,13 @@ interface Option {
   detail?: string;
 }
 
-/** Menu déroulant avec recherche : valeurs d'un filtre, ou liste de tous les filtres. */
+/**
+ * Menu d'un filtre (ou liste de tous les filtres).
+ * Filtre à choix multiple : cases à cocher, le menu reste ouvert pendant qu'on coche.
+ * Filtre à choix unique (dates, tri…) : un clic choisit et ferme.
+ */
 function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; onClose: () => void }) {
+  const query = useStore(ui).query;
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -30,20 +45,32 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
   const [to, setTo] = useState("");
   const isOps = menu.key === "__ops";
   const op = src.operators.find((o) => o.key === menu.key);
+  const multi = !!op?.multi;
+
+  // valeurs déjà cochées (dans la barre de recherche)
+  const selected = useMemo(() => (op ? opValues(parseQuery(query, src), op.key) : []), [query, op, src]);
+  const isOn = (v: string) => selected.some((x) => norm(x) === norm(v));
 
   const options: Option[] = useMemo(() => {
     if (isOps) {
       return src.operators.map((o) => ({ value: o.aliases[0], label: o.label, detail: `${o.aliases[0]}:` }));
     }
-    return (op?.values?.() ?? []).map((v: OperatorValue) => ({ value: v.value, label: v.label ?? v.value, detail: v.detail }));
-  }, [isOps, op, src]);
+    const list = (op?.values?.() ?? []).map((v: OperatorValue) => ({ value: v.value, label: v.label ?? v.value, detail: v.detail }));
+    if (!multi) return list;
+    // cochées d'abord (y compris une valeur tapée à la main), pour les décocher vite
+    const known = new Set(list.map((o) => norm(o.value)));
+    const extra = selected.filter((v) => !known.has(norm(v))).map((v) => ({ value: v, label: v }));
+    const on = list.filter((o) => selected.some((x) => norm(x) === norm(o.value)));
+    const off = list.filter((o) => !selected.some((x) => norm(x) === norm(o.value)));
+    return [...extra, ...on, ...off];
+    // la liste ne se réordonne pas pendant qu'on coche : seulement à l'ouverture
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOps, op, src, multi]);
 
   const filtered = useMemo(() => {
     const n = norm(q.trim());
-    if (!n) return options.slice(0, 80);
-    return options
-      .filter((o) => norm(`${o.label} ${o.value} ${o.detail ?? ""}`).includes(n))
-      .slice(0, 80);
+    if (!n) return options.slice(0, 120);
+    return options.filter((o) => norm(`${o.label} ${o.value} ${o.detail ?? ""}`).includes(n)).slice(0, 120);
   }, [options, q]);
 
   useEffect(() => {
@@ -58,10 +85,22 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
 
   useEffect(() => setIndex(0), [q]);
 
-  const choose = (o: Option) => {
+  const close = () => {
     onClose();
-    if (isOps) insertOperator(o.value);
-    else if (op) applyFilter(op.key, o.value);
+    focusInput();
+  };
+
+  const choose = (o: Option) => {
+    if (isOps) {
+      onClose();
+      insertOperator(o.value);
+    } else if (op && multi) {
+      toggleFilterValue(op.key, o.value);
+      inputRef.current?.focus();
+    } else if (op) {
+      onClose();
+      applyFilter(op.key, o.value);
+    }
   };
 
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -77,13 +116,17 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
       const o = filtered[index];
       if (o) choose(o);
       else if (op && q.trim()) {
-        onClose();
-        applyFilter(op.key, q.trim());
-      }
+        if (multi) {
+          toggleFilterValue(op.key, q.trim());
+          setQ("");
+        } else {
+          onClose();
+          applyFilter(op.key, q.trim());
+        }
+      } else if (multi) close();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
-      focusInput();
+      close();
     }
   };
 
@@ -102,7 +145,7 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
           spellCheck={false}
         />
       </div>
-      <div className="fmenu-list" role="listbox">
+      <div className="fmenu-list" role="listbox" aria-multiselectable={multi || undefined}>
         {op?.dates && !q.trim() && (
           <div className="fmenu-dates" onMouseDown={(e) => e.stopPropagation()}>
             <div className="fmenu-dates-title">Dates personnalisées</div>
@@ -128,34 +171,56 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
             </div>
           </div>
         )}
-        {filtered.map((o, i) => (
-          <div
-            key={`${o.value}-${i}`}
-            className={`fmenu-item ${i === index ? "sel" : ""}`}
-            onMouseMove={() => setIndex(i)}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              choose(o);
-            }}
-          >
-            <span className="fmenu-label">{o.label}</span>
-            {o.detail && <span className="fmenu-detail">{o.detail}</span>}
-          </div>
-        ))}
+        {filtered.map((o, i) => {
+          const on = !isOps && isOn(o.value);
+          return (
+            <div
+              key={`${o.value}-${i}`}
+              role="option"
+              aria-selected={on}
+              className={`fmenu-item ${i === index ? "sel" : ""} ${on ? "on" : ""}`}
+              onMouseEnter={() => setIndex(i)}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                choose(o);
+              }}
+            >
+              {multi && <span className={`fcheck ${on ? "on" : ""}`}>{on && <Check size={11} strokeWidth={3} />}</span>}
+              <span className="fmenu-label">{o.label}</span>
+              {o.detail && <span className="fmenu-detail">{o.detail}</span>}
+              {!multi && on && <Check size={14} className="fmenu-tick" />}
+            </div>
+          );
+        })}
         {!filtered.length && (
           <div className="fmenu-empty">
-            {op && q.trim() ? (
-              <>
-                Entrée pour filtrer sur « {q.trim()} »
-              </>
-            ) : (
-              "Aucune valeur connue pour l'instant"
-            )}
+            {op && q.trim() ? <>Entrée pour {multi ? "ajouter" : "filtrer sur"} « {q.trim()} »</> : "Aucune valeur connue pour l'instant"}
           </div>
         )}
       </div>
+      {multi && op && (
+        <div className="fmenu-foot">
+          <span className="fmenu-count">
+            {selected.length ? `${selected.length} choisi${selected.length > 1 ? "s" : ""}` : "Cochez une ou plusieurs valeurs"}
+          </span>
+          {selected.length > 0 && (
+            <button className="btn small btn-plain" onMouseDown={(e) => e.preventDefault()} onClick={() => clearFilterValues(op.key)}>
+              Effacer
+            </button>
+          )}
+          <button className="btn small primary" onMouseDown={(e) => e.preventDefault()} onClick={close}>
+            OK
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Texte d'une pastille : « Docs, Sheets » ou « Docs +2 ». */
+function chipText(op: OperatorDef, values: string[]): string {
+  const labels = values.map((v) => valueLabel(op, v).split(" / ").pop() ?? v);
+  return labels.length <= 2 ? labels.join(", ") : `${labels[0]} +${labels.length - 1}`;
 }
 
 /** Filtres sous la barre de recherche, à la manière de la recherche native des outils. */
@@ -181,6 +246,7 @@ export function FilterBar() {
     .map((k) => src.operators.find((o) => o.key === k))
     .filter((o): o is OperatorDef => !!o);
   const quick = src.chips.filter((c) => !(src.filterBar ?? []).includes(c.op));
+  const activeCount = new Set(q.ops.map((o) => o.key)).size;
 
   const open = (key: string, e: MouseEvent<HTMLElement>) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -190,10 +256,14 @@ export function FilterBar() {
   return (
     <div className="chips">
       {bar.map((op) => {
-        const active = q.ops.filter((o) => o.key === op.key && !o.negate);
-        const text = active.length ? active.map((a) => valueLabel(op, a.value)).join(", ") : null;
+        const active = q.ops.filter((o) => o.key === op.key && !o.negate).map((o) => o.value);
+        const text = active.length ? chipText(op, active) : null;
         return (
-          <span key={op.key} className={`fchip ${active.length ? "on" : ""} ${menu?.key === op.key ? "open" : ""}`}>
+          <span
+            key={op.key}
+            className={`fchip ${active.length ? "on" : ""} ${menu?.key === op.key ? "open" : ""}`}
+            title={active.length ? active.map((v) => valueLabel(op, v)).join("\n") : undefined}
+          >
             <button className="fchip-main" onMouseDown={(e) => e.preventDefault()} onClick={(e) => open(op.key, e)}>
               <span className="fchip-label">{op.label}</span>
               {text && <span className="fchip-value">{text}</span>}
@@ -230,6 +300,11 @@ export function FilterBar() {
       >
         <Plus size={13} /> Filtre
       </button>
+      {activeCount > 1 && (
+        <button className="chip chip-clear" title="Retirer tous les filtres" onMouseDown={(e) => e.preventDefault()} onClick={clearAllFilters}>
+          <X size={12} /> Tout effacer
+        </button>
+      )}
       {menu && src.key === "drive" && menu.key === "dossier" ? (
         <FolderBrowser x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
       ) : (

@@ -2578,3 +2578,107 @@ a:hover {
   word-break: break-word;
   user-select: text;
 }
+
+/* --- Filtres à choix multiple --- */
+.fcheck {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  color: #fff;
+  background: var(--layer);
+  box-shadow: inset 0 0 0 1.5px var(--stroke-strong);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+
+.fcheck.on {
+  background: var(--tool);
+  box-shadow: inset 0 0 0 1.5px var(--tool);
+}
+
+button.fcheck:hover:not(.on) {
+  box-shadow: inset 0 0 0 1.5px var(--tool);
+}
+
+.fmenu-item.on .fmenu-label,
+.folder-row.on .folder-name {
+  font-weight: 700;
+}
+
+.fmenu-tick {
+  margin-left: auto;
+  color: var(--tool);
+  flex: none;
+}
+
+.fmenu-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px 7px 12px;
+  border-top: 1px solid var(--stroke);
+}
+
+.fmenu-count {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn.btn-plain {
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn.small.primary {
+  padding: 0 12px;
+}
+
+.folder-choose-current.on {
+  background: color-mix(in srgb, var(--tool) 26%, transparent);
+}
+
+.chip-clear {
+  color: var(--muted);
+}
+
+/* ligne « Rechercher dans l'outil » : filtres que l'outil ne reçoit pas */
+.row-dropped {
+  color: #f2b84b;
+}
+
+:root[data-theme="light"] .row-dropped {
+  color: #a86a06;
+}
+
+.pv-dropped {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, #f2b84b 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #f2b84b 35%, transparent);
+  font-size: 12px;
+}
+
+.pv-dropped-title {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.pv-dropped ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.pv-dropped p {
+  margin: 0;
+  color: var(--muted);
+}

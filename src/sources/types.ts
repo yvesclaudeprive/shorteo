@@ -1,7 +1,17 @@
 import type { OpenMode } from "../app/settings";
 
 /** Recherche saisie dans l'application : raccourci + collage (côté natif). */
-export type Recipe = "notion" | "superhuman" | "superhuman_palette" | "pipedrive" | "claude" | "chatgpt";
+/** Recettes de saisie : dans l'application de bureau, ou (…_web, pipedrive) dans un onglet du navigateur. */
+export type Recipe =
+  | "notion"
+  | "superhuman"
+  | "superhuman_palette"
+  | "claude"
+  | "chatgpt"
+  | "pipedrive"
+  | "superhuman_web"
+  | "claude_web"
+  | "chatgpt_web";
 
 export type SourceKey = "notion" | "drive" | "pipedrive" | "mail" | "chatgpt" | "claude";
 export type SourceId = "all" | SourceKey;
@@ -21,6 +31,8 @@ export interface ResultItem {
   /** Texte supplémentaire indexé (non affiché) */
   text?: string;
   snippet?: string;
+  /** Ligne « rechercher dans l'outil » : filtres que l'outil ne peut pas recevoir */
+  dropped?: string[];
   unread?: boolean;
   /** Champs bruts compacts pour filtres et aperçu */
   f?: Record<string, any>;
@@ -56,6 +68,8 @@ export interface OperatorDef {
   strict?: boolean;
   /** Filtre de dates : le menu propose aussi des dates personnalisées */
   dates?: boolean;
+  /** Plusieurs valeurs possibles (cases à cocher) : « Docs + Sheets », « de : A ou B »… */
+  multi?: boolean;
   /** Suggestions calculées à partir de ce qui est tapé (prioritaire sur values) */
   complete?: (partial: string) => OperatorValue[];
 }
@@ -112,6 +126,10 @@ export interface NativeTarget {
   hint?: string;
   /** Recherche saisie automatiquement dans l'application ouverte (raccourci + collage) */
   recipe?: Recipe;
+  /** Même chose dans l'onglet ouvert sur `url` (site web) */
+  webRecipe?: Recipe;
+  /** Filtres actifs que l'outil ne permet pas de transmettre (libellés lisibles) */
+  dropped?: string[];
 }
 
 export interface ContactInfo {
