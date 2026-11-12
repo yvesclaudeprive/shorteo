@@ -25,6 +25,8 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
   const inputRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [index, setIndex] = useState(0);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const isOps = menu.key === "__ops";
   const op = src.operators.find((o) => o.key === menu.key);
 
@@ -83,9 +85,10 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
     }
   };
 
-  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 308));
+  const left = Math.max(8, Math.min(menu.x, window.innerWidth - 348));
+  const maxHeight = Math.max(200, window.innerHeight - menu.y - 12);
   return (
-    <div ref={ref} className="fmenu" style={{ left, top: menu.y }} role="dialog">
+    <div ref={ref} className="fmenu" style={{ left, top: menu.y, maxHeight }} role="dialog">
       <div className="fmenu-search">
         <Search size={14} />
         <input
@@ -98,6 +101,31 @@ function FilterMenu({ src, menu, onClose }: { src: SourceDef; menu: MenuState; o
         />
       </div>
       <div className="fmenu-list" role="listbox">
+        {op?.dates && !q.trim() && (
+          <div className="fmenu-dates" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="fmenu-dates-title">Dates personnalisées</div>
+            <div className="fmenu-dates-row">
+              <label>
+                Du
+                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </label>
+              <label>
+                Au
+                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              </label>
+              <button
+                className="btn primary"
+                disabled={!from && !to}
+                onClick={() => {
+                  onClose();
+                  applyFilter(op.key, `${from}..${to}`);
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
         {filtered.map((o, i) => (
           <div
             key={`${o.value}-${i}`}

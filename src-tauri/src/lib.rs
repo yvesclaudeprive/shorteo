@@ -383,7 +383,8 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 mod keys {
     use std::mem::size_of;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL, VK_DIVIDE, VK_RETURN,
+        SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL, VK_DIVIDE,
+        VK_MENU, VK_RETURN, VK_SHIFT,
     };
 
     fn key(vk: u16, up: bool) -> INPUT {
@@ -415,9 +416,36 @@ mod keys {
         send(&[key(vk, false), key(vk, true)]);
     }
 
+    /// Tape un caractère avec la vraie touche du clavier actuel (AZERTY, QWERTY…).
+    pub fn type_char(c: char) {
+        let r = unsafe { VkKeyScanW(c as u16) };
+        if r == -1 {
+            if c == '/' {
+                tap(VK_DIVIDE);
+            }
+            return;
+        }
+        let vk = (r as u16) & 0xff;
+        let mods = ((r as u16) >> 8) & 0xff;
+        let mut down = Vec::new();
+        if mods & 1 != 0 {
+            down.push(VK_SHIFT);
+        }
+        if mods & 2 != 0 {
+            down.push(VK_CONTROL);
+        }
+        if mods & 4 != 0 {
+            down.push(VK_MENU);
+        }
+        let mut seq: Vec<INPUT> = down.iter().map(|m| key(*m, false)).collect();
+        seq.push(key(vk, false));
+        seq.push(key(vk, true));
+        seq.extend(down.iter().rev().map(|m| key(*m, true)));
+        send(&seq);
+    }
+
     pub const K_P: u16 = 0x50;
     pub const K_V: u16 = 0x56;
-    pub const SLASH: u16 = VK_DIVIDE;
     pub const ENTER: u16 = VK_RETURN;
 }
 
@@ -447,7 +475,7 @@ fn foreground_process(state: &AppState) -> Option<String> {
 }
 
 #[tauri::command]
-async fn native_search_keys(app: AppHandle, recipe: String) -> Result<bool, String> {
+async fn native_search_keys(app: AppHandle, recipe: String, cold: Option<bool>) -> Result<bool, String> {
     #[cfg(windows)]
     {
         let target = match recipe.as_str() {
@@ -468,7 +496,8 @@ async fn native_search_keys(app: AppHandle, recipe: String) -> Result<bool, Stri
                 }
                 std::thread::sleep(Duration::from_millis(120));
             }
-            std::thread::sleep(Duration::from_millis(550));
+            // application qui vient de démarrer : on lui laisse le temps de charger
+            std::thread::sleep(Duration::from_millis(if cold.unwrap_or(false) { 4000 } else { 600 }));
             if foreground_process(&state).as_deref() != Some(target) {
                 return false;
             }
@@ -479,7 +508,7 @@ async fn native_search_keys(app: AppHandle, recipe: String) -> Result<bool, Stri
                     keys::ctrl(keys::K_V);
                 }
                 _ => {
-                    keys::tap(keys::SLASH);
+                    keys::type_char('/');
                     std::thread::sleep(Duration::from_millis(450));
                     keys::ctrl(keys::K_V);
                     std::thread::sleep(Duration::from_millis(200));
@@ -494,7 +523,7 @@ async fn native_search_keys(app: AppHandle, recipe: String) -> Result<bool, Stri
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, recipe);
+        let _ = (app, recipe, cold);
         Ok(false)
     }
 }

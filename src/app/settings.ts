@@ -35,6 +35,8 @@ export interface Settings {
   driveMaxItems: number;
   /** Raccourcis affichés en tête de la recherche Drive (noms de dossiers ou de fichiers) */
   driveFavorites: string[];
+  /** Version des réglages (migrations) */
+  schema: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,8 +49,8 @@ export const DEFAULT_SETTINGS: Settings = {
   pipedriveDomain: "",
   mailAccount: "",
   notionMe: "",
-  notionOpen: "app-if-running",
-  superhumanOpen: "app-if-running",
+  notionOpen: "app-if-installed",
+  superhumanOpen: "app-if-installed",
   claudeOpen: "app-if-installed",
   superhumanThreadUrl: "https://mail.superhuman.com/{email}/thread/{threadId}",
   superhumanSearchUrl: "",
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
     "Password client en cours",
     "Password prospects en cours",
   ],
+  schema: 2,
 };
 
 export const settingsStore = createStore<Settings>({ ...DEFAULT_SETTINGS });
@@ -89,6 +92,11 @@ export async function loadSettings(): Promise<boolean> {
       ...parsed,
       connected: { ...DEFAULT_SETTINGS.connected, ...(parsed.connected ?? {}) },
     });
+    // v2 : Notion et Superhuman s'ouvrent dans leur application dès qu'elle est installée
+    if ((parsed.schema ?? 1) < 2) {
+      settingsStore.set({ notionOpen: "app-if-installed", superhumanOpen: "app-if-installed", schema: 2 });
+      void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
+    }
   } catch {
     /* fichier corrompu : valeurs par défaut */
   }

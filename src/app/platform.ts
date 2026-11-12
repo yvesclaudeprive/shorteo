@@ -132,9 +132,9 @@ export const platform = {
   },
 
   /** Tape le raccourci de recherche + colle la requête dans l'application ouverte (Windows). */
-  async nativeSearchKeys(recipe: "notion" | "superhuman"): Promise<boolean> {
+  async nativeSearchKeys(recipe: "notion" | "superhuman", cold = false): Promise<boolean> {
     if (!isTauri) return false;
-    return invoke<boolean>("native_search_keys", { recipe });
+    return invoke<boolean>("native_search_keys", { recipe, cold });
   },
 
   /** Enregistre l'export chiffré : l'utilisateur choisit l'emplacement. */

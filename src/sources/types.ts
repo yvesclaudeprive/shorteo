@@ -51,6 +51,8 @@ export interface OperatorDef {
   values?: () => OperatorValue[];
   /** Valeurs fermées : une valeur inconnue (en cours de saisie) est ignorée */
   strict?: boolean;
+  /** Filtre de dates : le menu propose aussi des dates personnalisées */
+  dates?: boolean;
   /** Suggestions calculées à partir de ce qui est tapé (prioritaire sur values) */
   complete?: (partial: string) => OperatorValue[];
 }
@@ -85,11 +87,15 @@ export interface DetailRow {
   value: string;
 }
 
+export type Tone = "green" | "red" | "blue" | "gray" | "amber" | "violet";
+
 export interface Described {
   sub?: string;
   meta?: string;
   badge?: string;
-  badgeTone?: "green" | "red" | "blue" | "gray" | "amber" | "violet";
+  badgeTone?: Tone;
+  /** Étiquettes de classement (ex. Client, Prospect) */
+  tags?: Array<{ label: string; tone: Tone }>;
 }
 
 export interface NativeTarget {

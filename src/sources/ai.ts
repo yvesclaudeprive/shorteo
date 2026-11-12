@@ -1,6 +1,6 @@
 import { settings } from "../app/settings";
 import { getIndex, searchIndex, setIndex } from "../app/index-store";
-import { fullDate, relativeDate, periodMs, PERIOD_VALUES } from "../app/format";
+import { fullDate, relativeDate, inRange, periodRange, PERIOD_VALUES } from "../app/format";
 import { opValues } from "../app/query";
 import { platform, type ImportedConversation } from "../app/platform";
 import type { ParsedQuery, ResultItem, SourceDef, SourceKey } from "./types";
@@ -11,10 +11,10 @@ import type { ParsedQuery, ResultItem, SourceDef, SourceKey } from "./types";
  */
 
 function periodFilter(q: ParsedQuery): ((it: ResultItem) => boolean) | null {
-  const p = opValues(q, "modifie")
-    .map(periodMs)
+  const r = opValues(q, "modifie")
+    .map(periodRange)
     .find((x) => x !== null);
-  return p ? (it) => !!it.t && it.t >= Date.now() - p : null;
+  return r ? (it) => inRange(it.t, r) : null;
 }
 
 export async function importHistory(kind: "chatgpt" | "claude"): Promise<number | null> {
@@ -100,7 +100,7 @@ function makeSource(key: "chatgpt" | "claude"): SourceDef {
     label,
     color: isClaude ? "#e07a55" : "#10a37f",
     placeholder: isClaude ? "Demander à Claude ou retrouver une conversation…" : "Demander à ChatGPT ou retrouver une conversation…",
-    operators: [{ key: "modifie", aliases: ["modifié", "depuis"], label: "Conversation depuis", values: () => PERIOD_VALUES }],
+    operators: [{ key: "modifie", aliases: ["modifié", "depuis"], label: "Date", values: () => PERIOD_VALUES, dates: true }],
     filterBar: ["modifie"],
     chips: [
       { label: "7 jours", op: "modifie", value: "7j" },

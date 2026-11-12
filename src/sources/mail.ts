@@ -1,7 +1,7 @@
 import { qs, mapLimit } from "../app/http";
 import { settings, fillTemplate } from "../app/settings";
 import { getIndex, setIndex, setIndexMeta } from "../app/index-store";
-import { decodeEntities, fullDate, relativeDate } from "../app/format";
+import { decodeEntities, fullDate, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { platform } from "../app/platform";
 import { quoteIfNeeded } from "../app/query";
@@ -179,6 +179,7 @@ const OPERATORS = [
   },
   { key: "after", aliases: ["après", "depuis", "after"], label: "Après le", values: dateValues },
   { key: "before", aliases: ["avant", "before"], label: "Avant le", values: dateValues },
+  { key: "periode", aliases: ["date", "période"], label: "Date", values: () => PERIOD_VALUES, dates: true },
   {
     key: "newer_than",
     aliases: ["récent", "newer_than"],
@@ -228,9 +229,22 @@ const OPERATORS = [
 ];
 
 /** Construit la requête Gmail (opérateurs traduits + texte libre conservé). */
+const gday = (ms: number) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export function toGmailQuery(q: ParsedQuery): string {
   const parts: string[] = [];
-  for (const o of q.ops) parts.push(`${o.negate ? "-" : ""}${o.key}:${quoteIfNeeded(o.value)}`);
+  for (const o of q.ops) {
+    if (o.key === "periode") {
+      const r = periodRange(o.value);
+      if (r?.from !== undefined) parts.push(`after:${gday(r.from - 86400000)}`);
+      if (r?.to !== undefined) parts.push(`before:${gday(r.to)}`);
+      continue;
+    }
+    parts.push(`${o.negate ? "-" : ""}${o.key}:${quoteIfNeeded(o.value)}`);
+  }
   parts.push(...q.unknown);
   const free = q.raw
     .split(/\s+/)
@@ -354,7 +368,7 @@ export const mailSource: SourceDef = {
   color: "#a78bfa",
   placeholder: "Mails (de:, à:, objet:, avec:pj, après:…)",
   operators: OPERATORS,
-  filterBar: ["from", "to", "is", "has", "in", "newer_than", "label"],
+  filterBar: ["from", "to", "periode", "is", "has", "in", "label"],
   chips: [
     { label: "Non lus", op: "is", value: "unread" },
     { label: "Avec PJ", op: "has", value: "attachment" },

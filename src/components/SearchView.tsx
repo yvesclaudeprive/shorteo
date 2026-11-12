@@ -13,7 +13,8 @@ import {
   openItem,
   openSettings,
   runNative,
-  selectKey,
+  previewItem,
+  setHover,
   setSource,
   ui,
   willOpenInApp,
@@ -61,7 +62,7 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
     <div
       ref={ref}
       className={`row ${selected ? "sel" : ""} ${item.unread ? "unread" : ""} ${special ? "row-action" : ""}`}
-      onMouseMove={() => selectKey(itemKey(item))}
+      onMouseMove={() => setHover(itemKey(item))}
       onClick={(e) => void openItem(item, { web: e.ctrlKey })}
     >
       <span className="row-icon" style={{ ["--kind" as string]: kindColor(item) }}>
@@ -84,6 +85,11 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
         {item.snippet && item.action !== "native" && <div className="row-snippet">{item.snippet}</div>}
       </div>
       <div className="row-side">
+        {d.tags?.map((t) => (
+          <span key={t.label} className={`tag tone-${t.tone}`}>
+            {t.label}
+          </span>
+        ))}
         {d.badge && <span className={`badge tone-${d.badgeTone ?? "gray"}`}>{d.badge}</span>}
         {d.meta && <span className="row-meta">{d.meta}</span>}
         {item.action === "native" && <ArrowUpRight size={14} className="muted" />}
@@ -129,7 +135,7 @@ function Results() {
     );
   }
   return (
-    <div className="results" role="listbox">
+    <div className="results" role="listbox" onMouseLeave={() => setHover(null)}>
       {s.groups.map((g) => (
         <section key={g.key} className="group">
           {(g.title || g.loading || (g.error && g.error !== "notconfigured")) && (
@@ -204,8 +210,7 @@ function ContactList({ list }: { list: ContactInfo[] }) {
 function Preview() {
   const s = useStore(ui);
   useStore(settingsStore);
-  const items = flatItems(s.groups);
-  const item = items.find((i) => itemKey(i) === s.selectedKey) ?? items[0];
+  const item = previewItem();
   if (!item) return <aside className="preview" />;
   const src = SOURCES[item.source];
   const inApp = willOpenInApp(item);
@@ -256,6 +261,11 @@ function Preview() {
           <div className="pv-src">
             <SourceTile id={item.source} size={14} /> {src.label}
             {d.badge && <span className={`badge tone-${d.badgeTone ?? "gray"}`}>{d.badge}</span>}
+            {d.tags?.map((t) => (
+              <span key={t.label} className={`tag tone-${t.tone}`}>
+                {t.label}
+              </span>
+            ))}
           </div>
         </div>
       </div>
@@ -305,7 +315,9 @@ function Footer() {
     <footer className="footer">
       <span>
         <kbd>↵</kbd>{" "}
-        {item?.action === "switch"
+        {item?.action === "native"
+          ? `Rechercher dans ${SOURCES[item.source].label}`
+          : item?.action === "switch"
           ? "Voir"
           : item?.action === "ask"
             ? "Envoyer"
@@ -316,11 +328,15 @@ function Footer() {
       <span>
         <kbd>Ctrl+↵</kbd> Navigateur
       </span>
-      {src && !src.actions && (
+      {src && src.nativeFirst ? (
+        <span>
+          <kbd>↓</kbd> Résultats
+        </span>
+      ) : src && !src.actions ? (
         <span>
           <kbd>⇧↵</kbd> Rechercher dans {src.label}
         </span>
-      )}
+      ) : null}
       <span>
         <kbd>Tab</kbd> Compléter
       </span>

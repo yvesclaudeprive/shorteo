@@ -4,7 +4,7 @@ import { settingsStore } from "../app/settings";
 import { indexVersion } from "../app/index-store";
 import { applyFilter, openItem, ui } from "../app/controller";
 import { hasOp, parseQuery } from "../app/query";
-import { driveShortcuts, driveSource } from "../sources/drive";
+import { driveShortcuts, driveSource, shortcutLabel } from "../sources/drive";
 import { ItemIcon } from "./icons";
 
 /**
@@ -32,7 +32,7 @@ export function DriveShortcuts() {
             onClick={() => (isFolder ? applyFilter("dossier", name) : void openItem(item!))}
           >
             <span className="fav-icon">{isFolder ? <Folder size={14} /> : <ItemIcon item={item!} size={14} />}</span>
-            {name}
+            {shortcutLabel(name)}
             {!isFolder && <ArrowUpRight size={12} className="fav-open" />}
           </button>
         );

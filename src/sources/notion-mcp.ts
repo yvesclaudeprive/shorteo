@@ -314,8 +314,8 @@ function rememberPaths(items: ResultItem[]): void {
 export interface McpSearchOptions {
   createdByMe?: boolean;
   createdBy?: string[];
-  createdSince?: number;
-  editedSince?: number;
+  created?: { from?: number; to?: number };
+  edited?: { from?: number; to?: number };
   sortRecent?: boolean;
   pageSize?: number;
 }
@@ -325,8 +325,12 @@ export async function mcpSearch(query: string, o: McpSearchOptions = {}): Promis
   const created = [...(o.createdBy ?? []), ...(o.createdByMe ? ["me"] : [])];
   if (created.length) filters.created_by_user_ids = created;
   const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  if (o.createdSince) filters.created_date_range = { start_date: day(o.createdSince) };
-  if (o.editedSince) filters.last_edited_date_range = { start_date: day(o.editedSince) };
+  const range = (r: { from?: number; to?: number }) => ({
+    ...(r.from !== undefined ? { start_date: day(r.from) } : {}),
+    ...(r.to !== undefined ? { end_date: day(r.to - 1) } : {}),
+  });
+  if (o.created) filters.created_date_range = range(o.created);
+  if (o.edited) filters.last_edited_date_range = range(o.edited);
   const data = await callTool("notion-search", {
     query,
     page_size: o.pageSize ?? 25,

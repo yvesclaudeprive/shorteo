@@ -1,13 +1,13 @@
 import { qs } from "../app/http";
 import { settings } from "../app/settings";
 import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
-import { fullDate, periodMs, PERIOD_VALUES, relativeDate } from "../app/format";
+import { fullDate, inRange, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { opValues } from "../app/query";
 import { platform } from "../app/platform";
 import { gapi } from "./google";
 import { demoLive } from "./demo";
-import type { ParsedQuery, ResultItem, SourceDef } from "./types";
+import type { ParsedQuery, ResultItem, SourceDef, Tone } from "./types";
 
 const API = "https://www.googleapis.com/drive/v3";
 const FIELDS =
@@ -117,6 +117,36 @@ function folderChain(item: ResultItem): string[] {
   return out;
 }
 
+const SHORT_LABELS: Record<string, string> = {
+  "clients en cours": "Client",
+  "prospects en cours": "Prospect",
+  "devis type": "Devis type",
+  "password client en cours": "Password client",
+  "password clients en cours": "Password client",
+  "password prospects en cours": "Password prospect",
+  "password prospect en cours": "Password prospect",
+};
+const TAG_TONES: Tone[] = ["green", "blue", "violet", "amber", "red"];
+
+/** Étiquette courte d'un raccourci (« Clients en cours » → « Client »). */
+export function shortcutLabel(name: string): string {
+  return SHORT_LABELS[norm(name.trim())] ?? name.replace(/\s+en\s+cours$/i, "").trim();
+}
+
+/** Étiquettes d'un fichier : raccourcis (dossiers ou fichiers) auxquels il appartient. */
+function shortcutTags(item: ResultItem): Array<{ label: string; tone: Tone }> {
+  const favs = settings().driveFavorites;
+  if (!favs.length) return [];
+  const chain = folderChain(item).map(norm);
+  const title = norm(item.title);
+  const out: Array<{ label: string; tone: Tone }> = [];
+  favs.forEach((name, i) => {
+    const n = norm(name.trim());
+    if (title === n || chain.includes(n)) out.push({ label: shortcutLabel(name), tone: TAG_TONES[i % TAG_TONES.length] });
+  });
+  return out;
+}
+
 /** Raccourcis Drive des paramètres, retrouvés par leur nom dans l'index. */
 export function driveShortcuts(): Array<{ name: string; item?: ResultItem }> {
   const items = getIndex("drive").items;
@@ -145,12 +175,20 @@ function owners(): Array<{ value: string; detail?: string }> {
     .map(([value, c]) => ({ value, detail: c.e }));
 }
 
+
+/** Plage de dates du premier filtre de ce type présent dans la requête. */
+function rangeOf(q: ParsedQuery, key: string) {
+  for (const v of opValues(q, key)) {
+    const r = periodRange(v);
+    if (r) return r;
+  }
+  return null;
+}
+
 function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
   const types = opValues(q, "type");
   const own = opValues(q, "owner").map(norm);
-  const period = opValues(q, "modifie")
-    .map(periodMs)
-    .find((x) => x !== null);
+  const period = rangeOf(q, "modifie");
   const flags = opValues(q, "is");
   const folders = opValues(q, "dossier").map(norm);
   return (it) => {
@@ -161,7 +199,7 @@ function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
       );
       if (!ok) return false;
     }
-    if (period && (!it.t || it.t < Date.now() - period)) return false;
+    if (period && !inRange(it.t, period)) return false;
     if (flags.includes("suivi") && !it.f?.s) return false;
     if (flags.includes("partage") && !it.f?.sh) return false;
     if (folders.length) {
@@ -197,10 +235,9 @@ function liveQuery(q: ParsedQuery): string {
   for (const o of opValues(q, "owner")) {
     if (norm(o) === "moi" || norm(o) === "me") parts.push("'me' in owners");
   }
-  const period = opValues(q, "modifie")
-    .map(periodMs)
-    .find((x) => x !== null);
-  if (period) parts.push(`modifiedTime > '${new Date(Date.now() - period).toISOString()}'`);
+  const period = rangeOf(q, "modifie");
+  if (period?.from !== undefined) parts.push(`modifiedTime > '${new Date(period.from).toISOString()}'`);
+  if (period?.to !== undefined) parts.push(`modifiedTime < '${new Date(period.to).toISOString()}'`);
   if (opValues(q, "is").includes("suivi")) parts.push("starred = true");
   return parts.join(" and ");
 }
@@ -233,7 +270,7 @@ export const driveSource: SourceDef = {
       label: "Propriétaire",
       values: () => [{ value: "moi", label: "Moi" }, ...owners()],
     },
-    { key: "modifie", aliases: ["modifié", "modif", "after"], label: "Modifié depuis", values: () => PERIOD_VALUES },
+    { key: "modifie", aliases: ["modifié", "modif", "after"], label: "Modifié", values: () => PERIOD_VALUES, dates: true },
     {
       key: "is",
       strict: true,
@@ -268,6 +305,7 @@ export const driveSource: SourceDef = {
     { label: "30 jours", op: "modifie", value: "30j" },
   ],
   configured: () => settings().connected.google,
+  nativeFirst: true,
 
   localSearch(q, limit) {
     return searchIndex("drive", q.tokens, applyFilters(q), limit);
@@ -326,10 +364,9 @@ export const driveSource: SourceDef = {
       }
     }
     if (opValues(q, "is").includes("suivi")) parts.push("is:starred");
-    const period = opValues(q, "modifie")
-      .map(periodMs)
-      .find((x) => x !== null);
-    if (period) parts.push(`after:${new Date(Date.now() - period).toISOString().slice(0, 10)}`);
+    const period = rangeOf(q, "modifie");
+    if (period?.from !== undefined) parts.push(`after:${new Date(period.from).toISOString().slice(0, 10)}`);
+    if (period?.to !== undefined) parts.push(`before:${new Date(period.to).toISOString().slice(0, 10)}`);
     return {
       label: "Rechercher dans Drive",
       url: `https://drive.google.com/drive/search?q=${encodeURIComponent(parts.join(" "))}`,
@@ -337,11 +374,13 @@ export const driveSource: SourceDef = {
   },
 
   describe(item) {
+    const tags = shortcutTags(item);
     const owner = item.f?.me ? "Moi" : item.f?.o;
     const folder = folderName(item.f?.p);
     return {
       sub: [owner, folder ? `📁 ${folder}` : undefined].filter(Boolean).join(" · ") || undefined,
       meta: relativeDate(item.t),
+      tags,
       badge: DRIVE_KINDS[item.kind] ?? "Fichier",
       badgeTone:
         item.kind === "sheet" ? "green" : item.kind === "doc" ? "blue" : item.kind === "slides" ? "amber" : item.kind === "pdf" ? "red" : "gray",

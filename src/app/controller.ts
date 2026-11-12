@@ -40,6 +40,8 @@ export interface UIState {
   selectedKey: string | null;
   /** La sélection a été choisie par l'utilisateur (sinon elle suit le meilleur résultat) */
   userSelected: boolean;
+  /** Élément survolé à la souris : met à jour l'aperçu, sans changer ce qu'ouvre Entrée */
+  hoverKey: string | null;
   homeFocus: number;
   comp: CompletionState & { index: number; open: boolean; touched: boolean };
   liveLoading: boolean;
@@ -61,6 +63,7 @@ export const ui = createStore<UIState>({
   groups: [],
   selectedKey: null,
   userSelected: false,
+  hoverKey: null,
   homeFocus: 0,
   comp: NO_COMP,
   liveLoading: false,
@@ -330,6 +333,7 @@ export function setQuery(value: string, caret: number): void {
     caret,
     selectedKey: value === s.query ? s.selectedKey : null,
     userSelected: value === s.query ? s.userSelected : false,
+    hoverKey: value === s.query ? s.hoverKey : null,
     mode: s.mode === "home" && value ? "search" : s.mode,
     comp: { ...c, index: 0, open: c.items.length > 0, touched: false },
   });
@@ -347,7 +351,7 @@ export function setSource(id: SourceId, opts: { keepQuery?: boolean; query?: str
   const s = ui.get();
   const target = sourceDef(id);
   const query = opts.query ?? (opts.keepQuery === false ? "" : carryQuery(s.query, target));
-  ui.set({ source: id, mode: "search", query, caret: query.length, comp: NO_COMP, selectedKey: null, userSelected: false });
+  ui.set({ source: id, mode: "search", query, caret: query.length, comp: NO_COMP, selectedKey: null, userSelected: false, hoverKey: null });
   updateSettings({ lastSource: id });
   runSearch();
   focusInput();
@@ -370,11 +374,26 @@ export function moveSelection(delta: number): void {
   if (!items.length) return;
   const i = Math.max(0, items.findIndex((x) => itemKey(x) === s.selectedKey));
   const next = Math.min(items.length - 1, Math.max(0, i + delta));
-  ui.set({ selectedKey: itemKey(items[next]), userSelected: true });
+  ui.set({ selectedKey: itemKey(items[next]), userSelected: true, hoverKey: null });
 }
 
 export function selectKey(key: string): void {
   if (ui.get().selectedKey !== key) ui.set({ selectedKey: key, userSelected: true });
+}
+
+export function setHover(key: string | null): void {
+  if (ui.get().hoverKey !== key) ui.set({ hoverKey: key });
+}
+
+/** Élément affiché dans l'aperçu : celui survolé, sinon celui sélectionné au clavier. */
+export function previewItem(): ResultItem | null {
+  const s = ui.get();
+  const items = flatItems(s.groups);
+  if (s.hoverKey) {
+    const h = items.find((i) => itemKey(i) === s.hoverKey);
+    if (h) return h;
+  }
+  return items.find((i) => itemKey(i) === s.selectedKey) ?? items[0] ?? null;
 }
 
 export function moveCompletion(delta: number): void {
@@ -559,11 +578,13 @@ export async function runNative(source?: SourceKey, extra?: NativeTarget): Promi
   const target = extra ?? src.nativeSearch(parseQuery(s.query, src));
   try {
     if (target.copy) await platform.copy(target.copy);
+    const at = src.appTarget;
+    const wasRunning = at ? !!(await platform.appsStatus([at.process], [at.scheme])).running[at.process] : false;
     const url = await resolveUrl(key, target.url, target.app);
     await platform.openUrl(url);
     await afterOpen();
     // Dans l'application : Shorteo tape le raccourci de recherche et colle la requête
-    if (target.recipe && target.app && url === target.app) void platform.nativeSearchKeys(target.recipe);
+    if (target.recipe && target.app && url === target.app) void platform.nativeSearchKeys(target.recipe, !wasRunning);
   } catch (e) {
     toast(errorText(e), "error");
   }

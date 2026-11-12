@@ -2,7 +2,7 @@ import { request, ApiError, NotConfiguredError } from "../app/http";
 import { getSecret } from "../app/secrets";
 import { settings, fillTemplate } from "../app/settings";
 import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
-import { fullDate, periodMs, PERIOD_VALUES, relativeDate } from "../app/format";
+import { fullDate, inRange, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { opValues } from "../app/query";
 import { platform } from "../app/platform";
@@ -204,24 +204,30 @@ function matchUser(id: string | undefined, wanted: string[]): boolean {
   return wanted.some((w) => (w === "moi" || w === "me" ? !!id && id === meId() : name.includes(w)));
 }
 
-function applyFilters(q: ParsedQuery): (it: ResultItem) => boolean {
+
+/** Plage de dates du premier filtre de ce type présent dans la requête. */
+function rangeOf(q: ParsedQuery, key: string) {
+  for (const v of opValues(q, key)) {
+    const r = periodRange(v);
+    if (r) return r;
+  }
+  return null;
+}
+
+function applyFilters(q: ParsedQuery, trustMcp = true): (it: ResultItem) => boolean {
   const types = opValues(q, "type");
   const by = opValues(q, "par").map(norm);
   const editedBy = opValues(q, "modifie_par").map(norm);
-  const period = opValues(q, "modifie")
-    .map(periodMs)
-    .find((x) => x !== null);
-  const created = opValues(q, "cree")
-    .map(periodMs)
-    .find((x) => x !== null);
+  const period = rangeOf(q, "modifie");
+  const created = rangeOf(q, "cree");
   const inside = opValues(q, "dans").map(norm);
   const space = opValues(q, "espace").map(norm);
   return (it) => {
     if (types.length && !types.includes(it.kind === "database" ? "base" : "page")) return false;
-    if (period && (!it.t || it.t < Date.now() - period)) return false;
+    if (period && !inRange(it.t, period)) return false;
     // Les résultats de la recherche Notion complète sont déjà filtrés par Notion (auteur, création)
-    const fromMcp = !!it.f?.mcp;
-    if (!fromMcp && created && (!it.f?.c || it.f.c < Date.now() - created)) return false;
+    const fromMcp = trustMcp && !!it.f?.mcp;
+    if (!fromMcp && created && !inRange(it.f?.c, created)) return false;
     if (!fromMcp && by.length && !matchUser(it.f?.cb, by)) return false;
     if (!fromMcp && editedBy.length && !matchUser(it.f?.eb, editedBy)) return false;
     const seg = inside.length || space.length ? pathSegments(it).map(norm) : [];
@@ -269,8 +275,8 @@ export const notionSource: SourceDef = {
     { key: "modifie_par", aliases: ["modifié_par", "edited_by"], label: "Modifié par", values: userValues },
     { key: "espace", aliases: ["espace", "space", "teamspace"], label: "Espace", values: spaces },
     { key: "dans", aliases: ["dans", "in"], label: "Dans", values: containers },
-    { key: "modifie", aliases: ["modifié", "modif", "edited"], label: "Modifié", values: () => PERIOD_VALUES },
-    { key: "cree", aliases: ["créé", "created"], label: "Créé", values: () => PERIOD_VALUES },
+    { key: "modifie", aliases: ["modifié", "modif", "edited"], label: "Modifié", values: () => PERIOD_VALUES, dates: true },
+    { key: "cree", aliases: ["créé", "created"], label: "Créé", values: () => PERIOD_VALUES, dates: true },
     {
       key: "tri",
       strict: true,
@@ -288,11 +294,12 @@ export const notionSource: SourceDef = {
   chips: [],
   configured: () => settings().connected.notion || settings().connected.notionMcp,
   liveDelay: () => (settings().connected.notionMcp ? 380 : 220),
+  nativeFirst: true,
 
   localSearch(q, limit) {
     const tri = opValues(q, "tri")[0];
-    if (!tri || tri === "pertinence") return searchIndex("notion", q.tokens, applyFilters(q), limit);
-    return sortItems(searchIndex("notion", q.tokens, applyFilters(q), 2000), tri).slice(0, limit);
+    if (!tri || tri === "pertinence") return searchIndex("notion", q.tokens, applyFilters(q, false), limit);
+    return sortItems(searchIndex("notion", q.tokens, applyFilters(q, false), 2000), tri).slice(0, limit);
   },
 
   wantsLive: (q) => q.text.length >= 2,
@@ -308,16 +315,20 @@ export const notionSource: SourceDef = {
       const ids = Object.entries(users())
         .filter(([, n]) => by.some((b) => b !== "moi" && b !== "me" && norm(n).includes(b)))
         .map(([id]) => id);
-      const created = opValues(q, "cree").map(periodMs).find((x) => x !== null);
-      const edited = opValues(q, "modifie").map(periodMs).find((x) => x !== null);
+      const created = rangeOf(q, "cree");
+      const edited = rangeOf(q, "modifie");
       tasks.push(
         mcpSearch(q.text, {
           createdByMe: by.includes("moi") || by.includes("me"),
           createdBy: ids,
-          createdSince: created ? Date.now() - created : undefined,
-          editedSince: edited ? Date.now() - edited : undefined,
+          created: created ?? undefined,
+          edited: edited ?? undefined,
           sortRecent: tri === "recent",
           pageSize: Math.min(limit, 25),
+        }).then((items) => {
+          // mémorisés localement : la prochaine frappe les propose instantanément
+          upsertItems("notion", items);
+          return items;
         }),
       );
     }

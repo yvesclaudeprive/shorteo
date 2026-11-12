@@ -316,6 +316,7 @@ export const pipedriveSource: SourceDef = {
     { label: "Perdues", op: "statut", value: "lost" },
   ],
   configured: () => settings().connected.pipedrive,
+  nativeFirst: true,
 
   localSearch(q, limit) {
     return searchIndex("pipedrive", q.tokens, applyFilters(q), limit);

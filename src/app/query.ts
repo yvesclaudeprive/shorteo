@@ -1,4 +1,5 @@
 import { norm, tokenize } from "./search";
+import { rangeLabel } from "./format";
 import type { Completion, OperatorDef, OperatorValue, ParsedOp, ParsedQuery, SourceDef } from "../sources/types";
 
 /**
@@ -243,5 +244,5 @@ export function removeOperator(input: string, source: SourceDef, opKey: string):
 /** Libellé lisible d'une valeur de filtre. */
 export function valueLabel(op: OperatorDef, value: string): string {
   const v = (op.values?.() ?? []).find((x) => norm(x.value) === norm(value));
-  return v?.label ?? value;
+  return v?.label ?? (op.dates ? rangeLabel(value) : null) ?? value;
 }
