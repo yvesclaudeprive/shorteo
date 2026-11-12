@@ -425,8 +425,8 @@ export const mailSource: SourceDef = {
       url: SUPERHUMAN_WEB,
       app: "superhuman://",
       copy: gq,
-      recipe: "superhuman",
-      hint: "Ouvre Superhuman et y lance la recherche (dans le navigateur : / puis Ctrl+V)",
+      recipe: s.superhumanSearchKey === "palette" ? "superhuman_palette" : "superhuman",
+      hint: "Ouvre Superhuman et y saisit la recherche, sans valider (dans le navigateur : / puis Ctrl+V)",
     };
   },
 

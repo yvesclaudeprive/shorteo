@@ -92,14 +92,75 @@ function folderName(id?: string): string | undefined {
   return getIndex("drive").byId.get(id)?.title;
 }
 
+// --- Racines : « Mon Drive » et drives partagés (lus en GET, gardés dans l'index) ---
+
+export interface SharedDrive {
+  id: string;
+  name: string;
+}
+
+/** Clé de cache : change quand l'index ou la liste des drives change. */
+function cacheKey(): string {
+  return `${indexVersion.get().v}:${getIndex("drive").meta.rootsAt ?? 0}`;
+}
+
+/** Identifiant du dossier racine « Mon Drive » (si déjà connu). */
+export function myDriveRootId(): string | undefined {
+  return getIndex("drive").meta.rootId;
+}
+
+/** Drives partagés dont vous êtes membre, triés par nom. */
+export function sharedDrives(): SharedDrive[] {
+  return [...((getIndex("drive").meta.drives as SharedDrive[] | undefined) ?? [])].sort((a, b) => collator.compare(a.name, b.name));
+}
+
+function sharedDriveName(id: string): string | undefined {
+  return ((getIndex("drive").meta.drives as SharedDrive[] | undefined) ?? []).find((d) => d.id === id)?.name;
+}
+
+/** Un drive partagé présenté comme un dossier (pour le filtre et le lien). */
+export function sharedDriveItem(d: SharedDrive): ResultItem {
+  return {
+    id: d.id,
+    source: "drive",
+    kind: "folder",
+    title: d.name,
+    url: `https://drive.google.com/drive/folders/${d.id}`,
+    f: { drive: 1 },
+  };
+}
+
+async function fetchRoots(): Promise<void> {
+  const root = await gapi<any>(`${API}/files/root?${qs({ fields: "id" })}`);
+  const drives: SharedDrive[] = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await gapi<any>(`${API}/drives?${qs({ pageSize: 100, fields: "nextPageToken,drives(id,name)", pageToken })}`);
+    for (const d of res.drives ?? []) drives.push({ id: d.id, name: d.name ?? "Drive partagé" });
+    pageToken = res.nextPageToken;
+  } while (pageToken && drives.length < 1000);
+  setIndexMeta("drive", { rootId: root.id, drives, rootsAt: Date.now() });
+}
+
+/** Charge (ou rafraîchit, une fois par jour) la racine « Mon Drive » et les drives partagés. */
+export async function ensureDriveRoots(force = false): Promise<boolean> {
+  if (platform.demo || !settings().connected.google) return false;
+  const at = getIndex("drive").meta.rootsAt ?? 0;
+  if (!force && Date.now() - at < 86400000) return false;
+  await fetchRoots();
+  return true;
+}
+
 // --- Dossiers parents (sous-dossiers compris), mis en cache par version d'index ---
 
-let chainCache: { v: number; map: Map<string, string[]> } = { v: -1, map: new Map() };
+const collator = new Intl.Collator("fr", { numeric: true, sensitivity: "base" });
+let chainCache: { k: string; map: Map<string, string[]> } = { k: "", map: new Map() };
 
-/** Noms des dossiers qui contiennent l'élément, du plus proche au plus lointain. */
+/** Noms des dossiers qui contiennent l'élément, du plus proche au plus lointain
+ * (le nom du drive partagé en dernier, le cas échéant). */
 function folderChain(item: ResultItem): string[] {
-  const v = indexVersion.get().v;
-  if (chainCache.v !== v) chainCache = { v, map: new Map() };
+  const k = cacheKey();
+  if (chainCache.k !== k) chainCache = { k, map: new Map() };
   const hit = chainCache.map.get(item.id);
   if (hit) return hit;
   const idx = getIndex("drive");
@@ -109,7 +170,11 @@ function folderChain(item: ResultItem): string[] {
   for (let i = 0; i < 15 && p && !seen.has(p); i++) {
     seen.add(p);
     const f = idx.byId.get(p);
-    if (!f) break;
+    if (!f) {
+      const d = sharedDriveName(p);
+      if (d) out.push(d);
+      break;
+    }
     out.push(f.title);
     p = f.f?.p;
   }
@@ -156,24 +221,94 @@ export function folderPath(folder: ResultItem): string[] {
   return [...folderChain(folder)].reverse().concat(folder.title);
 }
 
-/** Sous-dossiers d'un dossier (ou dossiers racine si parentId est null), triés par nom. */
-export function childFolders(parentId: string | null): ResultItem[] {
+interface Tree {
+  k: string;
+  /** dossiers par identifiant du parent, triés par nom */
+  children: Map<string, ResultItem[]>;
+  /** dossiers dont le parent n'est pas un dossier connu */
+  top: ResultItem[];
+}
+let treeCache: Tree = { k: "", children: new Map(), top: [] };
+
+/** Arborescence des dossiers, calculée une fois par version de l'index. */
+function tree(): Tree {
+  const k = cacheKey();
+  if (treeCache.k === k) return treeCache;
   const idx = getIndex("drive");
-  return idx.items
-    .filter((i) => {
-      if (i.kind !== "folder") return false;
-      if (parentId) return i.f?.p === parentId;
-      const parent = i.f?.p ? idx.byId.get(i.f.p) : undefined;
-      return !parent || parent.kind !== "folder";
+  const children = new Map<string, ResultItem[]>();
+  const top: ResultItem[] = [];
+  for (const i of idx.items) {
+    if (i.kind !== "folder") continue;
+    const p = (i.f?.p as string | undefined) ?? "";
+    let list = children.get(p);
+    if (!list) children.set(p, (list = []));
+    list.push(i);
+    const parent = p ? idx.byId.get(p) : undefined;
+    if (!parent || parent.kind !== "folder") top.push(i);
+  }
+  const byName = (a: ResultItem, b: ResultItem) => collator.compare(a.title, b.title);
+  for (const list of children.values()) list.sort(byName);
+  top.sort(byName);
+  treeCache = { k, children, top };
+  return treeCache;
+}
+
+/** Sous-dossiers d'un dossier (ou dossiers de premier niveau si parentId est null), triés par nom. */
+export function childFolders(parentId: string | null): ResultItem[] {
+  const t = tree();
+  return parentId ? t.children.get(parentId) ?? [] : t.top;
+}
+
+/** Nombre de sous-dossiers (sans parcourir l'index). */
+export function childCount(parentId: string): number {
+  return tree().children.get(parentId)?.length ?? 0;
+}
+
+/** Les trois entrées de départ du sélecteur de dossiers. */
+export function folderRoots(): { myDrive: ResultItem[]; shared: ResultItem[]; others: ResultItem[] } {
+  const t = tree();
+  const root = myDriveRootId();
+  const drives = sharedDrives();
+  const driveIds = new Set(drives.map((d) => d.id));
+  const shared = drives.map(sharedDriveItem);
+  if (!root) {
+    // racine pas encore connue : tout ce qui n'est pas dans un drive partagé
+    return { myDrive: t.top.filter((f) => !driveIds.has(f.f?.p)), shared, others: [] };
+  }
+  return {
+    myDrive: t.children.get(root) ?? [],
+    shared,
+    others: t.top.filter((f) => f.f?.p !== root && !driveIds.has(f.f?.p)),
+  };
+}
+
+/** Tous les dossiers connus, drives partagés compris. */
+function allFolders(): ResultItem[] {
+  const t = tree();
+  const out: ResultItem[] = sharedDrives().map(sharedDriveItem);
+  for (const list of t.children.values()) out.push(...list);
+  return out;
+}
+
+/** Recherche d'un dossier par son nom (sélecteur de dossiers). */
+export function searchFolders(text: string, limit = 80): ResultItem[] {
+  const n = norm(text.trim());
+  if (!n) return [];
+  return allFolders()
+    .filter((i) => norm(i.title).includes(n))
+    .sort((a, b) => {
+      const sa = norm(a.title).startsWith(n) ? 1 : 0;
+      const sb = norm(b.title).startsWith(n) ? 1 : 0;
+      return sb - sa || (b.t ?? 0) - (a.t ?? 0);
     })
-    .sort((a, b) => a.title.localeCompare(b.title, "fr"));
+    .slice(0, limit);
 }
 
 /** Dossier désigné par une valeur de filtre : nom (« Devis ») ou chemin (« Clients en cours / ACME / Devis »). */
 export function folderByValue(value: string): ResultItem | undefined {
   const segs = value.split(PATH_SEP).map((x) => norm(x.trim())).filter(Boolean);
   if (!segs.length) return undefined;
-  const folders = getIndex("drive").items.filter((i) => i.kind === "folder" && norm(i.title) === segs[segs.length - 1]);
+  const folders = allFolders().filter((i) => norm(i.title) === segs[segs.length - 1]);
   if (segs.length === 1) return folders.sort((a, b) => (b.t ?? 0) - (a.t ?? 0))[0];
   return folders.find((f) => {
     const p = folderPath(f).map(norm);
@@ -203,6 +338,23 @@ export function driveShortcuts(): Array<{ name: string; item?: ResultItem }> {
       matches.sort((a, b) => (b.t ?? 0) - (a.t ?? 0))[0];
     return { name, item };
   });
+}
+
+let valuesCache: { k: string; list: Array<{ value: string; label: string; detail?: string }> } = { k: "", list: [] };
+
+/** Valeurs du filtre « Dossier » (récents d'abord), calculées une fois par version de l'index. */
+function folderValues() {
+  const k = cacheKey();
+  if (valuesCache.k === k) return valuesCache.list;
+  const list = allFolders()
+    .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
+    .slice(0, 400)
+    .map((i) => {
+      const path = folderPath(i);
+      return { value: path.join(PATH_SEP), label: i.title, detail: path.slice(0, -1).join(" › ") || undefined };
+    });
+  valuesCache = { k, list };
+  return list;
 }
 
 function owners(): Array<{ value: string; detail?: string }> {
@@ -326,15 +478,7 @@ export const driveSource: SourceDef = {
       key: "dossier",
       aliases: ["dossier", "dans", "in"],
       label: "Dossier",
-      values: () =>
-        getIndex("drive")
-          .items.filter((i) => i.kind === "folder")
-          .sort((a, b) => (b.t ?? 0) - (a.t ?? 0))
-          .slice(0, 400)
-          .map((i) => {
-            const path = folderPath(i);
-            return { value: path.join(PATH_SEP), label: i.title, detail: path.slice(0, -1).join(" › ") || undefined };
-          }),
+      values: () => folderValues(),
     },
   ],
   filterBar: ["type", "owner", "modifie", "dossier", "is"],
@@ -456,6 +600,7 @@ export const driveSource: SourceDef = {
   async sync({ full, progress }) {
     const idx = getIndex("drive");
     const max = settings().driveMaxItems;
+    await ensureDriveRoots(full).catch(() => {});
     if (full || !idx.items.length || !idx.meta.changeToken) {
       const start = await gapi<any>(`${API}/changes/startPageToken?supportsAllDrives=true`);
       const items: ResultItem[] = [];

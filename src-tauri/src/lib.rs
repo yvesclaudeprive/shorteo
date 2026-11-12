@@ -49,6 +49,7 @@ struct AppState {
     oauth: Mutex<Option<TcpListener>>,
     sys: Mutex<sysinfo::System>,
     http: reqwest::Client,
+    native_log: Mutex<std::collections::VecDeque<LogLine>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -382,22 +383,31 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 #[cfg(windows)]
 pub mod keys {
     use std::mem::size_of;
+    use std::time::{Duration, Instant};
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_CONTROL, VK_DIVIDE,
-        VK_MENU, VK_RETURN, VK_SHIFT,
+        GetAsyncKeyState, MapVirtualKeyW, SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC, VK_CONTROL, VK_DELETE, VK_DIVIDE, VK_DOWN, VK_END,
+        VK_ESCAPE, VK_HOME, VK_INSERT, VK_LEFT, VK_LWIN, VK_MENU, VK_NEXT, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT,
+        VK_RMENU, VK_RWIN, VK_SHIFT, VK_UP,
     };
 
+    fn extended(vk: u16) -> bool {
+        [VK_DIVIDE, VK_RCONTROL, VK_RMENU, VK_INSERT, VK_DELETE, VK_HOME, VK_END, VK_PRIOR, VK_NEXT, VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN]
+            .contains(&vk)
+    }
+
+    /// Touche avec son code de balayage (comme un vrai clavier : les navigateurs et
+    /// applications Electron lisent aussi ce code).
     fn key(vk: u16, up: bool) -> INPUT {
+        let scan = unsafe { MapVirtualKeyW(vk as u32, MAPVK_VK_TO_VSC) } as u16;
+        let mut flags = if up { KEYEVENTF_KEYUP } else { 0 };
+        if extended(vk) {
+            flags |= KEYEVENTF_EXTENDEDKEY;
+        }
         INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: vk,
-                    wScan: 0,
-                    dwFlags: if up { KEYEVENTF_KEYUP } else { 0 },
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
+                ki: KEYBDINPUT { wVk: vk, wScan: scan, dwFlags: flags, time: 0, dwExtraInfo: 0 },
             },
         }
     }
@@ -439,22 +449,78 @@ pub mod keys {
         send(&seq)
     }
 
+    /// Tape un mot lettre par lettre.
+    pub fn type_text(s: &str) -> u32 {
+        s.chars()
+            .map(|c| {
+                let n = type_char(c);
+                std::thread::sleep(Duration::from_millis(35));
+                n
+            })
+            .sum()
+    }
+
+    /// Une touche Ctrl, Maj, Alt ou Windows est-elle physiquement enfoncée ?
+    pub fn modifiers_down() -> bool {
+        [VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN]
+            .iter()
+            .any(|vk| unsafe { GetAsyncKeyState(*vk as i32) } as u16 & 0x8000 != 0)
+    }
+
+    /// Attend que l'utilisateur ait relâché Ctrl / Maj / Alt / Windows (sinon
+    /// Ctrl+P deviendrait Ctrl+Maj+P, etc.).
+    pub fn wait_modifiers_released(max: Duration) -> bool {
+        let deadline = Instant::now() + max;
+        while modifiers_down() {
+            if Instant::now() > deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(40));
+        }
+        true
+    }
+
     pub const K_A: u16 = 0x41;
     pub const K_C: u16 = 0x43;
     pub const K_K: u16 = 0x4B;
     pub const K_P: u16 = 0x50;
     pub const K_V: u16 = 0x56;
     pub const ENTER: u16 = VK_RETURN;
+    pub const ESCAPE: u16 = VK_ESCAPE;
+}
+
+/// Caractéristiques d'une fenêtre candidate (dans l'ordre d'empilement, la plus haute d'abord).
+#[derive(Clone, Debug, Default)]
+pub struct WinCand {
+    pub w: i32,
+    pub h: i32,
+    pub iconic: bool,
+    pub tool: bool,
+    pub owned: bool,
+    pub topmost: bool,
+}
+
+/// Choix de la fenêtre principale d'une application parmi ses fenêtres visibles :
+/// on écarte les petites fenêtres, les palettes, les fenêtres « toujours au-dessus »
+/// (mini-recherche, notifications…) et celles qui appartiennent à une autre fenêtre.
+pub fn pick_window(c: &[WinCand]) -> Option<usize> {
+    let main = |x: &WinCand| !x.tool && !x.owned && (x.iconic || (x.w >= 400 && x.h >= 300));
+    c.iter()
+        .position(|x| main(x) && !x.topmost)
+        .or_else(|| c.iter().position(main))
+        .or_else(|| c.iter().position(|x| !x.tool && !x.owned))
 }
 
 /// Fenêtres : premier plan, recherche de la fenêtre d'un processus, lancement.
 #[cfg(windows)]
 pub mod winapp {
+    use super::WinCand;
     use std::collections::HashSet;
-    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-        SetForegroundWindow, ShowWindow, SW_RESTORE,
+        EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongW, GetWindowRect, GetWindowTextLengthW,
+        GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow, ShowWindow,
+        GWL_EXSTYLE, GW_OWNER, SW_RESTORE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     };
 
     pub fn pid_of(hwnd: HWND) -> u32 {
@@ -473,6 +539,13 @@ pub mod winapp {
             .collect()
     }
 
+    /// Nom du programme d'un processus (pour le journal).
+    pub fn process_name(sys: &mut sysinfo::System, pid: u32) -> String {
+        let p = sysinfo::Pid::from_u32(pid);
+        sys.refresh_processes_specifics(sysinfo::ProcessesToUpdate::Some(&[p]), true, sysinfo::ProcessRefreshKind::nothing());
+        sys.process(p).map(|x| x.name().to_string_lossy().to_string()).unwrap_or_else(|| "?".into())
+    }
+
     pub fn foreground_pid() -> u32 {
         let h = unsafe { GetForegroundWindow() };
         if h.is_null() {
@@ -482,32 +555,67 @@ pub mod winapp {
         }
     }
 
+    /// Titre de la fenêtre au premier plan (pour un navigateur : le titre de l'onglet).
+    pub fn foreground_title() -> String {
+        let h = unsafe { GetForegroundWindow() };
+        if h.is_null() {
+            return String::new();
+        }
+        let mut buf = [0u16; 512];
+        let n = unsafe { GetWindowTextW(h, buf.as_mut_ptr(), buf.len() as i32) };
+        String::from_utf16_lossy(&buf[..n.max(0) as usize])
+    }
+
+    pub struct Win {
+        pub hwnd: HWND,
+        pub class: String,
+        pub cand: WinCand,
+    }
+
     struct Search {
         pids: HashSet<u32>,
-        found: HWND,
+        found: Vec<Win>,
     }
 
     unsafe extern "system" fn enum_cb(hwnd: HWND, lparam: LPARAM) -> i32 {
         let s = &mut *(lparam as *mut Search);
         if IsWindowVisible(hwnd) != 0 && GetWindowTextLengthW(hwnd) > 0 && s.pids.contains(&pid_of(hwnd)) {
-            s.found = hwnd;
-            return 0;
+            let ex = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+            let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            GetWindowRect(hwnd, &mut r);
+            let mut cls = [0u16; 128];
+            let n = GetClassNameW(hwnd, cls.as_mut_ptr(), cls.len() as i32);
+            s.found.push(Win {
+                hwnd,
+                class: String::from_utf16_lossy(&cls[..n.max(0) as usize]),
+                cand: WinCand {
+                    w: r.right - r.left,
+                    h: r.bottom - r.top,
+                    iconic: IsIconic(hwnd) != 0,
+                    tool: ex & WS_EX_TOOLWINDOW != 0,
+                    owned: !GetWindow(hwnd, GW_OWNER).is_null(),
+                    topmost: ex & WS_EX_TOPMOST != 0,
+                },
+            });
         }
         1
     }
 
-    /// Fenêtre principale visible d'un des processus.
-    pub fn find_window(pids: &HashSet<u32>) -> Option<HWND> {
+    /// Fenêtres visibles (avec un titre) des processus, de la plus haute à la plus basse.
+    pub fn windows_of(pids: &HashSet<u32>) -> Vec<Win> {
         if pids.is_empty() {
-            return None;
+            return Vec::new();
         }
-        let mut s = Search { pids: pids.clone(), found: std::ptr::null_mut() };
+        let mut s = Search { pids: pids.clone(), found: Vec::new() };
         unsafe { EnumWindows(Some(enum_cb), &mut s as *mut Search as LPARAM) };
-        if s.found.is_null() {
-            None
-        } else {
-            Some(s.found)
-        }
+        s.found
+    }
+
+    /// Fenêtre principale d'un des processus.
+    pub fn find_window(pids: &HashSet<u32>) -> Option<HWND> {
+        let wins = windows_of(pids);
+        let cands: Vec<WinCand> = wins.iter().map(|w| w.cand.clone()).collect();
+        super::pick_window(&cands).map(|i| wins[i].hwnd)
     }
 
     /// Met la fenêtre au premier plan (restaurée si réduite).
@@ -544,7 +652,7 @@ pub mod winapp {
 fn recipe_target(recipe: &str) -> Option<(&'static str, Option<&'static str>, bool)> {
     match recipe {
         "notion" => Some(("notion.exe", Some("notion"), false)),
-        "superhuman" => Some(("superhuman.exe", Some("superhuman"), false)),
+        "superhuman" | "superhuman_palette" => Some(("superhuman.exe", Some("superhuman"), false)),
         "claude" => Some(("claude.exe", Some("claude"), false)),
         "chatgpt" => Some(("chatgpt.exe", None, false)),
         "pipedrive" => Some(("", None, true)),
@@ -557,38 +665,60 @@ const BROWSERS: &[&str] = &[
     "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe", "arc.exe",
 ];
 
+/// Séquence de touches de chaque recette. Jamais d'Entrée qui validerait la requête :
+/// la recherche est seulement saisie (pas de brouillon, pas d'« Ask AI » lancé).
+/// Renvoie le nombre de touches acceptées par Windows.
 #[cfg(windows)]
-fn type_recipe(recipe: &str) {
-    use std::thread::sleep;
+fn type_recipe(recipe: &str) -> u32 {
+    let ms = |n: u64| std::thread::sleep(Duration::from_millis(n));
+    let mut n = 0;
     match recipe {
         "notion" => {
-            keys::ctrl(keys::K_P);
-            sleep(Duration::from_millis(450));
-            keys::ctrl(keys::K_V);
+            // Échap : sort du bloc en cours d'édition / ferme un menu, puis Ctrl+P = recherche
+            n += keys::tap(keys::ESCAPE);
+            ms(250);
+            n += keys::ctrl(keys::K_P);
+            ms(900);
+            n += keys::ctrl(keys::K_V);
         }
         "superhuman" => {
-            keys::type_char('/');
-            sleep(Duration::from_millis(450));
-            keys::ctrl(keys::K_V);
-            sleep(Duration::from_millis(200));
-            keys::tap(keys::ENTER);
+            // Échap : ferme un brouillon ouvert (gardé en brouillon) pour ne rien y taper
+            n += keys::tap(keys::ESCAPE);
+            ms(250);
+            n += keys::type_char('/');
+            ms(700);
+            n += keys::ctrl(keys::K_V);
+        }
+        "superhuman_palette" => {
+            // variante : palette de commandes (Ctrl+K) → commande « Search »
+            n += keys::tap(keys::ESCAPE);
+            ms(250);
+            n += keys::ctrl(keys::K_K);
+            ms(700);
+            n += keys::type_text("search");
+            ms(600);
+            n += keys::tap(keys::ENTER);
+            ms(800);
+            n += keys::ctrl(keys::K_V);
         }
         "pipedrive" => {
-            keys::type_char('/');
-            sleep(Duration::from_millis(450));
-            keys::ctrl(keys::K_V);
+            n += keys::type_char('/');
+            ms(800);
+            n += keys::ctrl(keys::K_V);
         }
         "claude" | "chatgpt" => {
-            keys::ctrl(keys::K_K);
-            sleep(Duration::from_millis(450));
-            keys::ctrl(keys::K_V);
+            n += keys::ctrl(keys::K_K);
+            ms(700);
+            n += keys::ctrl(keys::K_V);
         }
         _ => {}
     }
+    n
 }
 
 /// Résultat : « typed » (recherche saisie), « not_installed » (application absente :
 /// l'appelant ouvre le site web), « not_foreground » (rien n'a été tapé).
+/// Chaque étape est notée dans le journal (Réglages › Général › Diagnostic).
 #[tauri::command]
 async fn native_search(app: AppHandle, recipe: String) -> Result<String, String> {
     #[cfg(windows)]
@@ -596,28 +726,48 @@ async fn native_search(app: AppHandle, recipe: String) -> Result<String, String>
         let (process, scheme, browser) = recipe_target(&recipe).ok_or("Recette inconnue")?;
         let res = tauri::async_runtime::spawn_blocking(move || -> String {
             let state = app.state::<AppState>();
+            let t0 = Instant::now();
+            let log = |m: String| nlog(&app, format!("{recipe} · {} ms · {m}", t0.elapsed().as_millis()));
+            log("début".into());
             let mut cold = false;
             if !browser {
                 let pids = winapp::pids(&mut state.sys.lock().unwrap(), process);
-                match winapp::find_window(&pids) {
-                    Some(hwnd) => {
-                        winapp::focus(hwnd);
+                let wins = winapp::windows_of(&pids);
+                log(format!("{} processus {process}, {} fenêtre(s) visible(s)", pids.len(), wins.len()));
+                let cands: Vec<WinCand> = wins.iter().map(|w| w.cand.clone()).collect();
+                match pick_window(&cands) {
+                    Some(i) => {
+                        let w = &wins[i];
+                        let ok = winapp::focus(w.hwnd);
+                        log(format!(
+                            "fenêtre {} {}×{}{}{} → premier plan {}",
+                            w.class,
+                            w.cand.w,
+                            w.cand.h,
+                            if w.cand.iconic { ", réduite" } else { "" },
+                            if w.cand.topmost { ", toujours au-dessus" } else { "" },
+                            if ok { "accepté" } else { "refusé" }
+                        ));
                     }
                     None => match scheme.and_then(winapp::exe_for_scheme) {
                         Some(exe) => {
-                            if std::process::Command::new(exe).spawn().is_err() {
+                            if let Err(e) = std::process::Command::new(&exe).spawn() {
+                                log(format!("lancement impossible : {e}"));
                                 return "not_installed".into();
                             }
+                            log("application lancée (elle n'était pas ouverte)".into());
                             cold = true;
                         }
-                        None => return "not_installed".into(),
+                        None => {
+                            log("application non installée → site web".into());
+                            return "not_installed".into();
+                        }
                     },
                 }
             }
             hide_window_inner(&app);
             // attendre que l'application (ou le navigateur) soit au premier plan
-            let deadline = Instant::now() + Duration::from_secs(if cold { 15 } else { 8 });
-            let is_target = |state: &AppState| {
+            let is_target = || {
                 let fg = winapp::foreground_pid();
                 if fg == 0 {
                     return false;
@@ -629,21 +779,44 @@ async fn native_search(app: AppHandle, recipe: String) -> Result<String, String>
                     winapp::pids(&mut sys, process).contains(&fg)
                 }
             };
-            loop {
-                if is_target(&state) {
-                    break;
-                }
+            let fg_name = || winapp::process_name(&mut state.sys.lock().unwrap(), winapp::foreground_pid());
+            let deadline = Instant::now() + Duration::from_secs(if cold { 15 } else { 8 });
+            while !is_target() {
                 if Instant::now() > deadline {
+                    log(format!("pas au premier plan (premier plan : {}) → rien n'est tapé", fg_name()));
                     return "not_foreground".into();
                 }
                 std::thread::sleep(Duration::from_millis(150));
             }
-            // laisser l'application (ou la page) finir de charger
-            std::thread::sleep(Duration::from_millis(if cold { 4500 } else if browser { 3500 } else { 600 }));
-            if !is_target(&state) {
+            log(format!("au premier plan ({})", fg_name()));
+            if browser {
+                // attendre que l'onglet Pipedrive soit chargé (titre), puis que l'appli démarre
+                let deadline = Instant::now() + Duration::from_secs(15);
+                loop {
+                    if winapp::foreground_title().to_lowercase().contains("pipedrive") {
+                        log("onglet Pipedrive chargé".into());
+                        break;
+                    }
+                    if Instant::now() > deadline {
+                        log("titre « Pipedrive » jamais vu : essai quand même".into());
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                std::thread::sleep(Duration::from_millis(2500));
+            } else {
+                std::thread::sleep(Duration::from_millis(if cold { 5000 } else { 800 }));
+            }
+            if !is_target() {
+                log(format!("n'est plus au premier plan (premier plan : {}) → rien n'est tapé", fg_name()));
                 return "not_foreground".into();
             }
-            type_recipe(&recipe);
+            if !keys::wait_modifiers_released(Duration::from_secs(3)) {
+                log("Ctrl / Maj / Alt toujours enfoncée → rien n'est tapé".into());
+                return "not_foreground".into();
+            }
+            let n = type_recipe(&recipe);
+            log(format!("séquence tapée ({n} touches acceptées par Windows)"));
             "typed".into()
         })
         .await
@@ -652,9 +825,39 @@ async fn native_search(app: AppHandle, recipe: String) -> Result<String, String>
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, recipe);
+        nlog(&app, format!("{recipe} · disponible uniquement sous Windows"));
         Ok("not_installed".into())
     }
+}
+
+#[derive(Serialize, Clone)]
+struct LogLine {
+    t: u64,
+    msg: String,
+}
+
+/// Journal de diagnostic (en mémoire, 300 lignes) : étapes de la recherche native.
+fn nlog(app: &AppHandle, msg: String) {
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let state = app.state::<AppState>();
+    let mut l = state.native_log.lock().unwrap();
+    l.push_back(LogLine { t, msg });
+    while l.len() > 300 {
+        l.pop_front();
+    }
+}
+
+#[tauri::command]
+fn native_log(state: State<AppState>) -> Vec<LogLine> {
+    state.native_log.lock().unwrap().iter().cloned().collect()
+}
+
+#[tauri::command]
+fn native_log_clear(state: State<AppState>) {
+    state.native_log.lock().unwrap().clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,6 +1451,7 @@ pub fn run() {
             oauth: Mutex::new(None),
             sys: Mutex::new(sysinfo::System::new()),
             http,
+            native_log: Mutex::new(std::collections::VecDeque::new()),
         })
         .setup(|app| {
             let handle = app.handle().clone();
@@ -1325,6 +1529,8 @@ pub fn run() {
             read_json_file,
             write_export_file,
             native_search,
+            native_log,
+            native_log_clear,
             import_ai_history
         ])
         .run(tauri::generate_context!())
@@ -1356,5 +1562,27 @@ mod tests {
         assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(init)));
         assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some(create)));
         assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some("pas du json")));
+        // Drive : liste des drives partagés et racine de « Mon Drive » en lecture
+        assert!(method_allowed(&get, "https://www.googleapis.com/drive/v3/drives?pageSize=100", None));
+        assert!(!method_allowed(&post, "https://www.googleapis.com/drive/v3/drives", Some("{}")));
+    }
+
+    #[test]
+    fn choix_de_la_fenetre_principale() {
+        let big = WinCand { w: 1400, h: 900, ..Default::default() };
+        // mini-fenêtre de recherche « toujours au-dessus », plus haute dans la pile : écartée
+        let popup = WinCand { w: 700, h: 420, topmost: true, ..Default::default() };
+        assert_eq!(pick_window(&[popup.clone(), big.clone()]), Some(1));
+        // palette, petite fenêtre, fenêtre possédée : écartées
+        let tool = WinCand { w: 1200, h: 800, tool: true, ..Default::default() };
+        let small = WinCand { w: 160, h: 40, ..Default::default() };
+        let owned = WinCand { w: 1200, h: 800, owned: true, ..Default::default() };
+        assert_eq!(pick_window(&[tool, small, owned, big.clone()]), Some(3));
+        // fenêtre réduite (taille factice) : acceptée
+        let min = WinCand { w: 160, h: 28, iconic: true, ..Default::default() };
+        assert_eq!(pick_window(&[min]), Some(0));
+        // seule une fenêtre « toujours au-dessus » : prise faute de mieux
+        assert_eq!(pick_window(&[popup]), Some(0));
+        assert_eq!(pick_window(&[]), None);
     }
 }

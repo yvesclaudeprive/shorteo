@@ -1,7 +1,7 @@
 import type { OpenMode } from "../app/settings";
 
 /** Recherche saisie dans l'application : raccourci + collage (côté natif). */
-export type Recipe = "notion" | "superhuman" | "pipedrive" | "claude" | "chatgpt";
+export type Recipe = "notion" | "superhuman" | "superhuman_palette" | "pipedrive" | "claude" | "chatgpt";
 
 export type SourceKey = "notion" | "drive" | "pipedrive" | "mail" | "chatgpt" | "claude";
 export type SourceId = "all" | SourceKey;

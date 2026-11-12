@@ -30,6 +30,29 @@ const notion: ResultItem[] = [
   f: { p: id === "n1" || id === "n6" ? undefined : "n1", cb: "u1" },
 }));
 
+/** Arborescence de démo : « Mon Drive » (root-demo), un drive partagé (sd1), un dossier partagé avec moi. */
+const DEMO_PARENT: Record<string, string> = {
+  d1: "d14",
+  d5: "d8",
+  d13: "d8",
+  d14: "d13",
+  d6: "root-demo",
+  d8: "root-demo",
+  d9: "root-demo",
+  d10: "sd1",
+  d15: "sd1",
+  d17: "d15",
+  d16: "ext-1",
+};
+const DEMO_DRIVE_META = {
+  rootId: "root-demo",
+  drives: [
+    { id: "sd1", name: "Yateo — Équipe" },
+    { id: "sd2", name: "Clients — Archives" },
+  ],
+  rootsAt: Date.now(),
+};
+
 const drive: ResultItem[] = [
   ["d1", "Devis Maison Lumière — SEO 2027", "sheet", 5 * H],
   ["d2", "Proposition commerciale Groupe Navarre", "slides", 30 * H],
@@ -45,6 +68,9 @@ const drive: ResultItem[] = [
   ["d12", "Password prospects en cours", "sheet", 9 * D],
   ["d13", "Maison Lumière", "folder", 2 * D],
   ["d14", "Devis", "folder", 2 * D],
+  ["d15", "Modèles", "folder", 12 * D],
+  ["d16", "Dossier partagé par Paul", "folder", 6 * D],
+  ["d17", "Charte graphique Yateo.pdf", "pdf", 12 * D],
 ].map(([id, title, kind, age], i) => ({
   id: id as string,
   source: "drive" as const,
@@ -52,7 +78,7 @@ const drive: ResultItem[] = [
   title: title as string,
   url: `https://drive.google.com/open?id=${id}`,
   t: now - (age as number),
-  f: { o: i % 2 ? "Paul Martin" : "Moi", me: i % 2 ? 0 : 1, p: id === "d1" ? "d14" : id === "d5" || id === "d13" ? "d8" : id === "d14" ? "d13" : id === "d8" || id === "d9" || id === "d10" || id === "d6" ? undefined : "d6", sh: 1, v: now - (age as number) },
+  f: { o: i % 2 ? "Paul Martin" : "Moi", me: i % 2 ? 0 : 1, p: DEMO_PARENT[id as string] ?? "d6", sh: 1, v: now - (age as number) },
 }));
 
 const pipedrive: ResultItem[] = [
@@ -107,7 +133,7 @@ const mails: ResultItem[] = [
 
 export function loadDemoData(): void {
   setIndex("notion", notion, { users: { u1: "Vous" } }, false);
-  setIndex("drive", drive, {}, false);
+  setIndex("drive", drive, DEMO_DRIVE_META, false);
   setIndex("pipedrive", pipedrive, {}, false);
   setIndex("chatgpt", chatgpt, {}, false);
   setIndex("claude", claude, {}, false);

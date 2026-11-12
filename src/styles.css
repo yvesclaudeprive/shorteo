@@ -1135,14 +1135,130 @@ a:hover {
   width: 380px;
 }
 
+.fnav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 5px 6px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.fnav-back {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  transition: background 0.12s;
+}
+
+.fnav-back:hover {
+  background: var(--layer-active);
+}
+
+.fnav-back.placeholder {
+  width: 0;
+  background: none;
+  box-shadow: none;
+}
+
 .crumbs {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 2px;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--stroke);
+  min-width: 0;
+  overflow: hidden;
   color: var(--faint);
+}
+
+.crumbs .crumb-wrap {
+  min-width: 0;
+}
+
+.crumbs .crumb {
+  display: block;
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crumbs .crumb.current {
+  max-width: 170px;
+}
+
+.crumb.current {
+  color: var(--text);
+}
+
+/* glissement des niveaux, comme un menu mobile */
+.fmenu-slide {
+  overflow-x: hidden;
+}
+
+.fpanel.fwd {
+  animation: fpanel-from-right 0.24s var(--ease) both;
+}
+
+.fpanel.back {
+  animation: fpanel-from-left 0.24s var(--ease) both;
+}
+
+@keyframes fpanel-from-right {
+  from {
+    transform: translateX(42%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fpanel-from-left {
+  from {
+    transform: translateX(-42%);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fpanel.fwd,
+  .fpanel.back {
+    animation: none;
+  }
+}
+
+.folder-ico-drive {
+  color: #4c8bf5;
+  background: color-mix(in srgb, #4c8bf5 18%, transparent);
+}
+
+.folder-ico-shared {
+  color: #22b07d;
+  background: color-mix(in srgb, #22b07d 18%, transparent);
+}
+
+.folder-ico-others {
+  color: #a26bf5;
+  background: color-mix(in srgb, #a26bf5 18%, transparent);
+}
+
+.folder-row-root {
+  min-height: 44px;
+}
+
+.folder-row-root .folder-name {
+  font-size: 13px;
 }
 
 .crumb-wrap {
@@ -1168,6 +1284,10 @@ a:hover {
 }
 
 .folder-choose-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
   width: 100%;
   margin-bottom: 4px;
   padding: 8px 10px;
@@ -1178,6 +1298,20 @@ a:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--tool) 16%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tool) 40%, transparent);
+}
+
+.folder-choose-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-choose-sub {
+  margin-left: auto;
+  flex: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
 }
 
 .folder-row {
@@ -2402,4 +2536,45 @@ a:hover {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* --- Diagnostic (journal de la recherche dans les applications) --- */
+.diag {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke);
+}
+
+.diag-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.diag-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.btn.small {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.diag-log {
+  margin: 10px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  font: 11px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
 }

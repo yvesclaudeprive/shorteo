@@ -4,7 +4,7 @@ import { parseQuery, computeCompletions, applyCompletion, toggleOperator, remove
 import { setIndex } from "../src/app/index-store";
 import { settingsStore, DEFAULT_SETTINGS } from "../src/app/settings";
 import { mailSource, toGmailQuery } from "../src/sources/mail";
-import { driveSource, childFolders, folderByValue } from "../src/sources/drive";
+import { driveSource, childFolders, childCount, folderByValue, folderRoots } from "../src/sources/drive";
 import { notionSource } from "../src/sources/notion";
 import { pipedriveSource } from "../src/sources/pipedrive";
 import { claudeSource, chatgptSource } from "../src/sources/ai";
@@ -134,6 +134,62 @@ describe("Drive : arborescence, filtres, lien de recherche, étiquettes", () => 
   });
 });
 
+describe("Drive : sélecteur de dossiers (Mon Drive / Drives partagés)", () => {
+  beforeEach(() => {
+    settingsStore.set({ ...DEFAULT_SETTINGS, connected: { notion: false, notionMcp: false, pipedrive: false, google: true } });
+    setIndex(
+      "drive",
+      [
+        folder("f1", "Clients en cours", "ROOT"),
+        folder("f2", "ACME", "f1"),
+        folder("f4", "Prospects en cours", "ROOT"),
+        folder("s1", "Modèles", "SD1"),
+        folder("s2", "Devis", "s1"),
+        folder("o1", "Dossier de Paul", "INCONNU"),
+        file("x1", "Devis type SEO", "s2", "sheet"),
+        file("x2", "Devis ACME", "f2", "sheet"),
+      ],
+      { rootId: "ROOT", drives: [{ id: "SD1", name: "Équipe Yateo" }], rootsAt: 1 },
+      false,
+    );
+  });
+  it("trois entrées de départ : Mon Drive, Drives partagés, Partagés avec moi", () => {
+    const r = folderRoots();
+    expect(r.myDrive.map((f) => f.title)).toEqual(["Clients en cours", "Prospects en cours"]);
+    expect(r.shared.map((f) => f.title)).toEqual(["Équipe Yateo"]);
+    expect(r.others.map((f) => f.title)).toEqual(["Dossier de Paul"]);
+    expect(childFolders("SD1").map((f) => f.id)).toEqual(["s1"]);
+    expect(childCount("s1")).toBe(1);
+  });
+  it("filtre sur un drive partagé entier, et lien vers ce drive", () => {
+    const r = driveSource.localSearch!(parseQuery('devis dossier:"Équipe Yateo"', driveSource), 20).map((i) => i.id);
+    // le dossier « Devis » et le fichier du drive partagé, pas le devis de Mon Drive
+    expect(r.sort()).toEqual(["s2", "x1"]);
+    expect(folderByValue("Équipe Yateo")?.id).toBe("SD1");
+    const t = driveSource.nativeSearch(parseQuery('dossier:"Équipe Yateo"', driveSource));
+    expect(t.url).toBe("https://drive.google.com/drive/folders/SD1");
+  });
+  it("chemin d'un dossier de drive partagé : nom du drive en tête", () => {
+    expect(folderByValue("Équipe Yateo / Modèles / Devis")?.id).toBe("s2");
+  });
+  it("rapide avec 30 000 dossiers (arborescence calculée une seule fois)", () => {
+    const many: ResultItem[] = [];
+    for (let i = 0; i < 300; i++) {
+      many.push(folder(`p${i}`, `Client ${i}`, "ROOT"));
+      for (let j = 0; j < 99; j++) many.push(folder(`c${i}-${j}`, `Projet ${j}`, `p${i}`));
+    }
+    setIndex("drive", many, { rootId: "ROOT", drives: [], rootsAt: 1 }, false);
+    const t0 = performance.now();
+    const top = folderRoots().myDrive;
+    let n = 0;
+    for (let k = 0; k < 50; k++) for (const f of top) n += childCount(f.id);
+    const ms = performance.now() - t0;
+    expect(top.length).toBe(300);
+    expect(n).toBe(50 * 300 * 99);
+    expect(ms).toBeLessThan(400);
+  });
+});
+
 describe("Notion : filtres Espace / Dans sur les résultats de la recherche complète", () => {
   it("espace et dossier parent depuis le chemin", () => {
     settingsStore.set({ connected: { notion: false, notionMcp: true, pipedrive: false, google: false } });
@@ -197,6 +253,15 @@ describe("Entrée : recherche dans l'outil, jamais l'élément survolé", () => 
     expect(copy).toHaveBeenCalledWith("to:hanane");
     expect(ns).toHaveBeenCalledWith("superhuman");
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("Mails : variante palette Ctrl+K → Search si choisie dans les réglages", async () => {
+    settingsStore.set({ superhumanSearchKey: "palette" });
+    setup("mail", "sanoflore");
+    vi.spyOn(platform, "copy").mockResolvedValue();
+    const ns = vi.spyOn(platform, "nativeSearch").mockResolvedValue("typed");
+    await runNative();
+    expect(ns).toHaveBeenCalledWith("superhuman_palette");
   });
 
   it("Mails : Superhuman absent → site web", async () => {

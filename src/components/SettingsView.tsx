@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowLeftRight,
   Check,
+  Copy,
   Download,
   Eye,
   EyeOff,
@@ -289,11 +290,59 @@ function General() {
           <option value={15}>Toutes les 15 minutes</option>
         </select>
       </Field>
+      <NativeLog />
       <div className="danger-zone">
         <button className="btn" onClick={() => void platform.quit()}>
           <Power size={14} /> Quitter Shorteo
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Journal des recherches lancées dans Notion, Superhuman, Pipedrive, Claude, ChatGPT. */
+function NativeLog() {
+  const [lines, setLines] = useState<Array<{ t: number; msg: string }>>([]);
+  const load = () => void platform.nativeLog().then(setLines).catch(() => {});
+  useEffect(load, []);
+  const text = lines
+    .map((l) => `${new Date(l.t).toLocaleTimeString("fr-FR")} ${l.msg}`)
+    .join("\n");
+  return (
+    <div className="diag">
+      <div className="diag-head">
+        <div>
+          <div className="field-label">Diagnostic : recherche dans les applications</div>
+          <div className="field-hint">
+            Ce qui s'est passé quand Entrée a lancé la recherche dans Notion, Superhuman, Pipedrive, Claude ou ChatGPT.
+            En cas de souci, copiez ce journal et envoyez-le (il ne contient ni requête ni contenu).
+          </div>
+        </div>
+        <div className="diag-actions">
+          <button className="btn small" title="Actualiser" onClick={load}>
+            <RefreshCw size={13} />
+          </button>
+          <button
+            className="btn small"
+            disabled={!lines.length}
+            title="Copier le journal"
+            onClick={() => {
+              void platform.copy(text).then(() => toast("Journal copié", "success", 1600));
+            }}
+          >
+            <Copy size={13} />
+          </button>
+          <button
+            className="btn small"
+            disabled={!lines.length}
+            title="Vider le journal"
+            onClick={() => void platform.nativeLogClear().then(load)}
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      </div>
+      <pre className="diag-log">{text || "Aucune recherche lancée depuis le démarrage de Shorteo."}</pre>
     </div>
   );
 }
@@ -865,6 +914,18 @@ function SuperhumanTab() {
       </p>
       <Field label="Au clic sur un mail">
         <OpenModeSelect app="Superhuman" value={st.superhumanOpen} onChange={(v) => updateSettings({ superhumanOpen: v })} />
+      </Field>
+      <Field
+        label="Entrée : ouvrir la recherche Superhuman avec"
+        hint="La requête est saisie dans la recherche, sans être validée (Entrée dans Superhuman l'enverrait à Ask AI). Si « / » ouvre Ask AI chez vous, choisissez la palette."
+      >
+        <select
+          value={st.superhumanSearchKey}
+          onChange={(e) => updateSettings({ superhumanSearchKey: e.target.value as "slash" | "palette" })}
+        >
+          <option value="slash">La touche / (raccourci Search)</option>
+          <option value="palette">Ctrl+K puis la commande « Search »</option>
+        </select>
       </Field>
       <Field
         label="Lien vers un fil Superhuman"

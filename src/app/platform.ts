@@ -141,6 +141,16 @@ export const platform = {
     return invoke("native_search", { recipe });
   },
 
+  /** Journal des recherches lancées dans les applications (diagnostic). */
+  async nativeLog(): Promise<Array<{ t: number; msg: string }>> {
+    if (!isTauri) return [];
+    return invoke("native_log");
+  },
+
+  async nativeLogClear(): Promise<void> {
+    if (isTauri) await invoke("native_log_clear");
+  },
+
   /** Enregistre l'export chiffré : l'utilisateur choisit l'emplacement. */
   async saveExportFile(content: string): Promise<string | null> {
     if (!isTauri) return null;

@@ -65,4 +65,4 @@ jobs:
             Write-Output "::error title=Test clavier Windows::$t"
             exit 1
           }
-          Write-Output "::notice title=Test clavier Windows::Bloc-notes : premier plan, frappe de / et collage vérifiés"
+          Write-Output "::notice title=Test clavier Windows::Bloc-notes : premier plan, Échap, frappe de /, collage et saisie d'un mot vérifiés"

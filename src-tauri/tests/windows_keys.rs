@@ -54,12 +54,19 @@ fn bloc_notes_premier_plan_frappe_et_collage() {
         sleep(Duration::from_millis(200));
     }
     sleep(Duration::from_millis(800));
+    assert!(!winapp::foreground_title().is_empty(), "titre de la fenêtre au premier plan vide");
+    assert!(keys::wait_modifiers_released(Duration::from_secs(2)), "touches Ctrl/Maj/Alt vues comme enfoncées");
 
-    // 3. « / » tapé selon le clavier actuel, puis collage de la requête
+    // 3. Échap (sans effet), « / » tapé selon le clavier actuel, collage, puis un mot
+    //    tapé lettre par lettre (variante palette de Superhuman)
     set_clipboard("to:hanane");
+    assert!(keys::tap(keys::ESCAPE) > 0, "SendInput a refusé Échap");
+    sleep(Duration::from_millis(200));
     assert!(keys::type_char('/') > 0, "SendInput a refusé la frappe");
     sleep(Duration::from_millis(300));
     keys::ctrl(keys::K_V);
+    sleep(Duration::from_millis(400));
+    assert!(keys::type_text(" search") > 0, "SendInput a refusé le mot");
     sleep(Duration::from_millis(500));
 
     // 4. relecture : tout sélectionner + copier
@@ -72,5 +79,5 @@ fn bloc_notes_premier_plan_frappe_et_collage() {
 
     let _ = child.kill();
     let _ = Command::new("taskkill").args(["/F", "/IM", "notepad.exe"]).status();
-    assert_eq!(text, "/to:hanane", "texte obtenu dans le Bloc-notes");
+    assert_eq!(text, "/to:hanane search", "texte obtenu dans le Bloc-notes");
 }

@@ -30,6 +30,8 @@ export interface Settings {
   /** Modèles d'URL (variables : {email} {threadId} {q}). Vide = comportement par défaut. */
   superhumanThreadUrl: string;
   superhumanSearchUrl: string;
+  /** Ouverture de la recherche Superhuman : touche « / » ou palette Ctrl+K → Search */
+  superhumanSearchKey: "slash" | "palette";
   notionSearchUrl: string;
   pipedriveSearchUrl: string;
   driveMaxItems: number;
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   claudeOpen: "app-if-installed",
   superhumanThreadUrl: "https://mail.superhuman.com/{email}/thread/{threadId}",
   superhumanSearchUrl: "",
+  superhumanSearchKey: "slash",
   notionSearchUrl: "",
   pipedriveSearchUrl: "",
   driveMaxItems: 60000,
