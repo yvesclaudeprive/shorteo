@@ -1,6 +1,6 @@
 [package]
 name = "shorteo"
-version = "0.3.6"
+version = "0.3.7"
 description = "Recherche rapide Notion, Drive, Pipedrive, Mails, ChatGPT et Claude"
 edition = "2021"
 
