@@ -36,8 +36,9 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
     const onDown = (e: globalThis.MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
+    // phase de capture : vérifié avant que le clic ne modifie la liste affichée
+    window.addEventListener("mousedown", onDown, true);
+    return () => window.removeEventListener("mousedown", onDown, true);
   }, [onClose]);
 
   useEffect(() => setIndex(0), [q, cur]);

@@ -416,7 +416,8 @@ export const driveSource: SourceDef = {
       .map(folderByValue)
       .find((f) => !!f);
     if (folder && !parts.length) {
-      return { label: `Ouvrir le dossier « ${folder.title} »`, url: `https://drive.google.com/drive/folders/${folder.id}` };
+      const label = `Ouvrir le dossier « ${folder.title} » dans Drive`;
+      return { label, title: label, url: `https://drive.google.com/drive/folders/${folder.id}` };
     }
     if (folder) parts.push(`parent:${folder.id}`);
     return {

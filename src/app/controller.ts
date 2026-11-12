@@ -128,7 +128,7 @@ function nativeRow(src: SourceDef, target: NativeTarget, query: string): ResultI
     source: src.key,
     kind: "native",
     action: "native",
-    title: `${target.label} : « ${query.trim()} »`,
+    title: target.title ?? `${target.label} : « ${query.trim()} »`,
     url: target.url,
     app: target.app,
     snippet: target.hint,

@@ -103,6 +103,8 @@ export interface Described {
 
 export interface NativeTarget {
   label: string;
+  /** Titre complet de la ligne (sinon « label : « requête » ») */
+  title?: string;
   url: string;
   app?: string;
   /** Texte copié dans le presse-papiers quand l'outil n'accepte pas de recherche par lien */
