@@ -9,7 +9,7 @@ import type { ResultItem } from "./types";
  * La recherche se fait avec VOS droits Notion : tout l'espace de travail, titres ET contenu,
  * comme la recherche native. Connexion OAuth (navigateur), enregistrement automatique du
  * client (RFC 7591), PKCE. Lecture seule : la partie native n'autorise que la recherche et
- * la consultation (outils « notion-search » et « notion-fetch »).
+ * la consultation (outils « notion-search », « notion-fetch » et « notion-list-favorite-pages »).
  */
 
 const MCP_URL = "https://mcp.notion.com/mcp";
@@ -253,7 +253,10 @@ async function ensureSession(): Promise<void> {
   await initializing;
 }
 
-async function callTool(name: "notion-search" | "notion-fetch", args: Record<string, unknown>): Promise<any> {
+async function callTool(
+  name: "notion-search" | "notion-fetch" | "notion-list-favorite-pages",
+  args: Record<string, unknown>,
+): Promise<any> {
   await ensureSession();
   const id = nextId++;
   const r = await post({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
@@ -267,7 +270,7 @@ async function callTool(name: "notion-search" | "notion-fetch", args: Record<str
   try {
     return JSON.parse(text);
   } catch {
-    return { results: [] };
+    return { results: [], __text: String(text) };
   }
 }
 
@@ -318,6 +321,8 @@ export interface McpSearchOptions {
   edited?: { from?: number; to?: number };
   sortRecent?: boolean;
   pageSize?: number;
+  /** Limiter à une page et à ses sous-pages (URL ou identifiant) */
+  pageUrl?: string;
 }
 
 export async function mcpSearch(query: string, o: McpSearchOptions = {}): Promise<ResultItem[]> {
@@ -337,6 +342,7 @@ export async function mcpSearch(query: string, o: McpSearchOptions = {}): Promis
     max_highlight_length: 160,
     ...(Object.keys(filters).length ? { filters } : {}),
     ...(o.sortRecent ? { sort: "last_edited" } : {}),
+    ...(o.pageUrl ? { page_url: o.pageUrl } : {}),
   });
   const items = ((data?.results ?? []) as any[]).filter((r) => r?.id).map(toItem);
   rememberPaths(items);
@@ -348,4 +354,57 @@ export async function testNotionMcp(): Promise<string> {
   return items.length
     ? `Connecté : la recherche couvre tout votre Notion (titres et contenu).`
     : "Connecté, mais la recherche de test n'a rien renvoyé.";
+}
+
+export interface NotionFavorite {
+  id: string;
+  title: string;
+  url?: string;
+}
+
+/** Identifiant Notion sans tirets, en minuscules (pour comparer). */
+export function notionKey(id: string | undefined): string {
+  return (id ?? "").replace(/-/g, "").toLowerCase();
+}
+
+function idFromUrl(url: string): string | undefined {
+  return /([0-9a-f]{32})(?:[?#/]|$)/i.exec(url.replace(/-/g, ""))?.[1];
+}
+
+/** Lit la liste des favoris quel que soit le format renvoyé (objets ou texte). */
+export function parseFavorites(data: any): NotionFavorite[] {
+  const out = new Map<string, NotionFavorite>();
+  const add = (id: string | undefined, title: string | undefined, url?: string) => {
+    const k = notionKey(id ?? (url ? idFromUrl(url) : undefined));
+    if (k.length !== 32 || out.has(k)) return;
+    out.set(k, { id: k, title: (title ?? "").trim() || "Favori", url });
+  };
+  const walk = (v: any, depth: number) => {
+    if (!v || depth > 6) return;
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1));
+    if (typeof v !== "object") return;
+    if ((typeof v.id === "string" || typeof v.url === "string") && (v.title || v.name || v.url)) {
+      add(typeof v.id === "string" ? v.id : undefined, v.title ?? v.name, typeof v.url === "string" ? v.url : undefined);
+    }
+    for (const x of Object.values(v)) if (x && typeof x === "object") walk(x, depth + 1);
+  };
+  walk(data, 0);
+  const text: string = typeof data?.__text === "string" ? data.__text : "";
+  if (text) {
+    // [Titre](https://www.notion.so/…-<id>) ou <page url="…">Titre</page> ou lignes « Titre — url »
+    for (const m of text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)) add(undefined, m[1], m[2]);
+    for (const m of text.matchAll(/<(?:page|database)[^>]*url="([^"]+)"[^>]*>([^<]*)</g)) add(undefined, m[2], m[1]);
+    for (const line of text.split(/\r?\n/)) {
+      const url = /(https?:\/\/[^\s)"'>]+)/.exec(line)?.[1];
+      if (!url) continue;
+      const title = line.replace(url, "").replace(/^[\s*•\-\d.]+/, "").replace(/[\s:—|()-]+$/, "").trim();
+      add(undefined, title, url);
+    }
+  }
+  return [...out.values()];
+}
+
+/** Favoris Notion de l'utilisateur (lecture seule). */
+export async function mcpFavorites(): Promise<NotionFavorite[]> {
+  return parseFavorites(await callTool("notion-list-favorite-pages", {}));
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Check, ChevronDown, Plus, X, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, X, Search, Star } from "lucide-react";
 import { useStore } from "../app/store";
 import {
   applyFilter,
@@ -285,10 +285,12 @@ export function FilterBar() {
       {quick.map((c) => (
         <button
           key={`${c.op}:${c.value}`}
-          className={`chip ${hasOp(q, c.op, c.value) ? "on" : ""}`}
+          className={`chip ${c.icon ? "chip-icon" : ""} ${hasOp(q, c.op, c.value) ? "on" : ""}`}
+          title={c.icon === "star" ? "Chercher seulement dans vos favoris et leurs sous-pages" : undefined}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => toggleChip(c)}
         >
+          {c.icon === "star" && <Star size={13} fill={hasOp(q, c.op, c.value) ? "currentColor" : "none"} />}
           {c.label}
         </button>
       ))}

@@ -24,6 +24,8 @@ export interface Settings {
   mailAccount: string;
   /** Votre identifiant d'utilisateur Notion (filtre « Créé par : Moi ») */
   notionMe: string;
+  /** Pages épinglées dans Shorteo (s'ajoutent aux favoris Notion pour le filtre ★ Favoris) */
+  notionPins: Array<{ id: string; title: string; url?: string }>;
   notionOpen: OpenMode;
   superhumanOpen: OpenMode;
   claudeOpen: OpenMode;
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pipedriveDomain: "",
   mailAccount: "",
   notionMe: "",
+  notionPins: [],
   notionOpen: "app-if-installed",
   superhumanOpen: "app-if-installed",
   claudeOpen: "browser",

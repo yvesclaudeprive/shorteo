@@ -8,7 +8,8 @@ import { driveSource, childFolders, childCount, folderByValue, folderRoots } fro
 import { notionSource } from "../src/sources/notion";
 import { pipedriveSource } from "../src/sources/pipedrive";
 import { claudeSource, chatgptSource } from "../src/sources/ai";
-import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection } from "../src/app/controller";
+import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection, emptyHint } from "../src/app/controller";
+import { parseFavorites } from "../src/sources/notion-mcp";
 import { platform } from "../src/app/platform";
 import type { ResultItem } from "../src/sources/types";
 
@@ -223,6 +224,66 @@ describe("Filtres à choix multiple", () => {
     const p = pipedriveSource.nativeSearch(parseQuery("sanoflore statut:open statut:won", pipedriveSource));
     expect(p.copy).toBe("sanoflore");
     expect(p.dropped?.[0]).toMatch(/^Statut de l'affaire : En cours, Gagnée$/);
+  });
+});
+
+describe("Notion : ★ Favoris (favoris et sous-pages)", () => {
+  const FAV = "1234567890abcdef1234567890abcdef";
+  const page = (id: string, title: string, extra: Record<string, unknown> = {}): ResultItem => ({
+    id,
+    source: "notion",
+    kind: "page",
+    title,
+    url: `https://www.notion.so/${id}`,
+    t: Date.now(),
+    f: extra,
+  });
+  beforeEach(() => {
+    settingsStore.set({ ...DEFAULT_SETTINGS, notionPins: [], connected: { notion: true, notionMcp: false, pipedrive: false, google: false } });
+    setIndex(
+      "notion",
+      [
+        page(FAV, "Clients"),
+        page("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "Sanoflore — audit", { p: FAV }),
+        page("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "Audit interne RH"),
+        page("cccccccccccccccccccccccccccccccc", "Audit Maison Brun", { path: "Équipe / Clients / Maison Brun", mcp: 1 }),
+      ],
+      { favorites: [{ id: FAV, title: "Clients" }] },
+      false,
+    );
+  });
+  it("lecture des favoris : objets ou texte avec liens", () => {
+    expect(parseFavorites({ results: [{ id: "12345678-90ab-cdef-1234-567890abcdef", title: "Clients" }] })).toEqual([
+      { id: FAV, title: "Clients", url: undefined },
+    ]);
+    const t = parseFavorites({ __text: `- [Projets](https://www.notion.so/Projets-${"f".repeat(32)})\n- Wiki https://www.notion.so/${"e".repeat(32)}` });
+    expect(t.map((x) => x.title)).toEqual(["Projets", "Wiki"]);
+  });
+  it("sans texte : la liste des favoris", () => {
+    const r = notionSource.localSearch!(parseQuery("favoris:oui", notionSource), 20).map((i) => i.title);
+    expect(r).toEqual(["Clients"]);
+  });
+  it("avec texte : seulement les favoris et leurs sous-pages (parent ou chemin)", () => {
+    const r = notionSource.localSearch!(parseQuery("audit favoris:oui", notionSource), 20).map((i) => i.title);
+    expect(r.sort()).toEqual(["Audit Maison Brun", "Sanoflore — audit"]);
+  });
+  it("une page épinglée dans Shorteo compte comme favori", () => {
+    settingsStore.set({ notionPins: [{ id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", title: "Audit interne RH" }] });
+    const r = notionSource.localSearch!(parseQuery("audit favoris:oui", notionSource), 20).map((i) => i.title);
+    expect(r).toContain("Audit interne RH");
+  });
+  it("aucun favori connu : explication affichée", () => {
+    setIndex("notion", [], {}, false);
+    expect(emptyHint(notionSource, [], "audit favoris:oui").hint).toMatch(/Aucun favori/);
+  });
+});
+
+describe("ChatGPT / Claude : historique non importé", () => {
+  it("une carte propose l'import (autocomplétion et filtres ensuite)", () => {
+    setIndex("chatgpt", [], {}, false);
+    expect(emptyHint(chatgptSource, [], "noel").hintTab).toBe("ai");
+    setIndex("chatgpt", [{ id: "c1", source: "chatgpt", kind: "conversation", title: "Noël 2026", url: "https://chatgpt.com/c/c1" }], {}, false);
+    expect(emptyHint(chatgptSource, [], "noel").hint).toBeUndefined();
   });
 });
 

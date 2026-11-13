@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { Check, ChevronLeft, ChevronRight, Folder, HardDrive, Search, Users, UserRound } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Folder, HardDrive, Search, Users, UserRound, X } from "lucide-react";
 import { useStore } from "../app/store";
 import { indexVersion, getIndex } from "../app/index-store";
 import { clearFilterValues, focusInput, toggleFilterValue, ui } from "../app/controller";
@@ -115,13 +115,17 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
   const chosen = useMemo(() => {
     const vals = opValues(parseQuery(query, driveSource), "dossier");
     const byId = new Map<string, string>();
-    const names: string[] = [];
+    const entries: Array<{ value: string; name: string; path: string }> = [];
     for (const val of vals) {
       const f = folderByValue(val);
       if (f) byId.set(f.id, val);
-      names.push(f?.title ?? val.split(PATH_SEP).pop() ?? val);
+      entries.push({
+        value: val,
+        name: f?.title ?? val.split(PATH_SEP).pop() ?? val,
+        path: f ? folderPath(f).join(" › ") : val,
+      });
     }
-    return { byId, names, count: vals.length };
+    return { byId, entries, count: vals.length };
   }, [query, v, rootsTick]);
 
   // racine « Mon Drive » et drives partagés : chargés à la première ouverture
@@ -330,14 +334,30 @@ export function FolderBrowser({ x, y, onClose }: { x: number; y: number; onClose
         </div>
       </div>
       <div className="fmenu-foot">
-        <span className="fmenu-count" title={chosen.names.join("\n")}>
-          {chosen.count
-            ? `${chosen.count} dossier${chosen.count > 1 ? "s" : ""} : ${chosen.names.join(", ")}`
-            : "Cochez un ou plusieurs dossiers"}
-        </span>
-        {chosen.count > 0 && (
+        {chosen.count ? (
+          <div className="fsel" aria-label="Dossiers choisis">
+            {chosen.entries.map((e) => (
+              <span key={e.value} className="fsel-tok" title={e.path}>
+                <span className="fsel-name">{e.name}</span>
+                <button
+                  title={`Retirer « ${e.name} »`}
+                  onMouseDown={(ev) => ev.preventDefault()}
+                  onClick={() => {
+                    toggleFilterValue("dossier", e.value);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="fmenu-count">Cochez un ou plusieurs dossiers</span>
+        )}
+        {chosen.count > 1 && (
           <button className="btn small btn-plain" onMouseDown={(e) => e.preventDefault()} onClick={() => clearFilterValues("dossier")}>
-            Effacer
+            Tout retirer
           </button>
         )}
         <button className="btn small primary" onMouseDown={(e) => e.preventDefault()} onClick={close}>

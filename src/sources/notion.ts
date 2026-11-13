@@ -1,13 +1,13 @@
 import { request, ApiError, NotConfiguredError } from "../app/http";
 import { getSecret } from "../app/secrets";
-import { settings, fillTemplate } from "../app/settings";
+import { settings, fillTemplate, updateSettings } from "../app/settings";
 import { getIndex, indexVersion, searchIndex, setIndex, setIndexMeta, upsertItems } from "../app/index-store";
 import { fullDate, inRange, periodRange, PERIOD_VALUES, relativeDate } from "../app/format";
 import { norm } from "../app/search";
 import { activeFilterLabels, opValues } from "../app/query";
 import { platform } from "../app/platform";
 import { demoLive } from "./demo";
-import { mcpSearch } from "./notion-mcp";
+import { mcpFavorites, mcpSearch, notionKey, type NotionFavorite } from "./notion-mcp";
 import type { ParsedQuery, ResultItem, SourceDef } from "./types";
 
 const API = "https://api.notion.com/v1";
@@ -218,6 +218,90 @@ function rangeOf(q: ParsedQuery, key: string) {
   return null;
 }
 
+// --- Favoris : favoris Notion (lus en lecture seule) + pages épinglées dans Shorteo ---
+
+/** Favoris connus : ceux de Notion puis les épingles Shorteo, sans doublon. */
+export function notionFavorites(): NotionFavorite[] {
+  const out = new Map<string, NotionFavorite>();
+  const fromNotion = (getIndex("notion").meta.favorites as NotionFavorite[] | undefined) ?? [];
+  for (const f of [...fromNotion, ...settings().notionPins]) {
+    const k = notionKey(f.id);
+    if (k && !out.has(k)) out.set(k, { ...f, id: k });
+  }
+  return [...out.values()];
+}
+
+/** Recharge les favoris Notion (au plus toutes les 10 min ; 1 h après un échec). */
+export async function ensureNotionFavorites(force = false): Promise<void> {
+  if (platform.demo || !settings().connected.notionMcp) return;
+  const m = getIndex("notion").meta;
+  const wait = m.favError ? 3600000 : 600000;
+  if (!force && Date.now() - (m.favAt ?? 0) < wait) return;
+  try {
+    const favorites = await mcpFavorites();
+    setIndexMeta("notion", { favorites, favAt: Date.now(), favError: undefined });
+  } catch (e) {
+    setIndexMeta("notion", { favAt: Date.now(), favError: errorMessage(e) });
+  }
+}
+
+/** Épingle / désépingle une page dans Shorteo (aucune modification dans Notion). */
+export function togglePin(item: ResultItem): boolean {
+  const pins = settings().notionPins;
+  const k = notionKey(item.id);
+  const on = pins.some((p) => notionKey(p.id) === k);
+  updateSettings({
+    notionPins: on ? pins.filter((p) => notionKey(p.id) !== k) : [...pins, { id: k, title: item.title, url: item.url }],
+  });
+  return !on;
+}
+
+export function isPinned(item: ResultItem): boolean {
+  const k = notionKey(item.id);
+  return settings().notionPins.some((p) => notionKey(p.id) === k);
+}
+
+/** Pages vues dans les recherches limitées aux favoris (sous-pages, même hors de l'index). */
+function rememberFavDescendants(items: ResultItem[]): void {
+  if (!items.length) return;
+  const cur: string[] = getIndex("notion").meta.favDesc ?? [];
+  const set = new Set(cur);
+  for (const it of items) set.add(notionKey(it.id));
+  if (set.size !== cur.length) setIndexMeta("notion", { favDesc: [...set].slice(-5000) });
+}
+
+/** L'élément est-il un favori ou l'une de ses sous-pages ? */
+function favoriteTest(): (it: ResultItem) => boolean {
+  const favs = notionFavorites();
+  const ids = new Set(favs.map((f) => f.id));
+  const titles = new Set(favs.map((f) => norm(f.title)).filter((t) => t && t !== "favori"));
+  const desc = new Set<string>(getIndex("notion").meta.favDesc ?? []);
+  return (it) => {
+    const k = notionKey(it.id);
+    if (ids.has(k) || desc.has(k)) return true;
+    if (ancestors(it).some((a) => ids.has(notionKey(a.id)))) return true;
+    return pathSegments(it).some((s) => titles.has(norm(s)));
+  };
+}
+
+/** Les favoris eux-mêmes, en tête quand le filtre ★ est actif. */
+function favoriteItems(): ResultItem[] {
+  const idx = getIndex("notion");
+  const byKey = new Map(idx.items.map((i) => [notionKey(i.id), i]));
+  return notionFavorites().map(
+    (f) =>
+      byKey.get(f.id) ?? {
+        id: f.id,
+        source: "notion",
+        kind: "page",
+        title: f.title,
+        url: f.url ?? `https://www.notion.so/${f.id}`,
+        app: `notion://www.notion.so/${f.id}`,
+        f: { fav: 1 },
+      },
+  );
+}
+
 function applyFilters(q: ParsedQuery, trustMcp = true): (it: ResultItem) => boolean {
   const types = opValues(q, "type");
   const by = opValues(q, "par").map(norm);
@@ -226,7 +310,9 @@ function applyFilters(q: ParsedQuery, trustMcp = true): (it: ResultItem) => bool
   const created = rangeOf(q, "cree");
   const inside = opValues(q, "dans").map(norm);
   const space = opValues(q, "espace").map(norm);
+  const inFav = opValues(q, "favoris").length ? favoriteTest() : null;
   return (it) => {
+    if (inFav && !inFav(it)) return false;
     if (types.length && !types.includes(it.kind === "database" ? "base" : "page")) return false;
     if (period && !inRange(it.t, period)) return false;
     // Les résultats de la recherche Notion complète sont déjà filtrés par Notion (auteur, création)
@@ -283,6 +369,13 @@ export const notionSource: SourceDef = {
     { key: "modifie", aliases: ["modifié", "modif", "edited"], label: "Modifié", values: () => PERIOD_VALUES, dates: true },
     { key: "cree", aliases: ["créé", "created"], label: "Créé", values: () => PERIOD_VALUES, dates: true },
     {
+      key: "favoris",
+      strict: true,
+      aliases: ["favoris", "fav"],
+      label: "Favoris",
+      values: () => [{ value: "oui", label: "Favoris et leurs sous-pages", aliases: ["yes", "1"] }],
+    },
+    {
       key: "tri",
       strict: true,
       aliases: ["tri", "sort"],
@@ -296,13 +389,21 @@ export const notionSource: SourceDef = {
     },
   ],
   filterBar: ["type", "par", "espace", "dans", "modifie", "tri"],
-  chips: [],
+  chips: [{ label: "Favoris", op: "favoris", value: "oui", icon: "star" }],
   configured: () => settings().connected.notion || settings().connected.notionMcp,
   liveDelay: () => (settings().connected.notionMcp ? 380 : 220),
   nativeFirst: true,
 
   localSearch(q, limit) {
     const tri = opValues(q, "tri")[0];
+    if (opValues(q, "favoris").length) {
+      void ensureNotionFavorites();
+      const filter = applyFilters(q, false);
+      const favs = favoriteItems().filter((f) => !q.tokens.length || q.tokens.every((t) => norm(f.title).includes(t)));
+      const found = q.tokens.length ? searchIndex("notion", q.tokens, filter, limit) : [];
+      const seen = new Set(favs.map((f) => notionKey(f.id)));
+      return [...favs, ...found.filter((i) => !seen.has(notionKey(i.id)))].slice(0, limit);
+    }
     if (!tri || tri === "pertinence") return searchIndex("notion", q.tokens, applyFilters(q, false), limit);
     return sortItems(searchIndex("notion", q.tokens, applyFilters(q, false), 2000), tri).slice(0, limit);
   },
@@ -315,6 +416,10 @@ export const notionSource: SourceDef = {
     const tri = opValues(q, "tri")[0];
     const tasks: Array<Promise<ResultItem[]>> = [];
 
+    const favOnly = opValues(q, "favoris").length > 0;
+    if (favOnly && st.connected.notionMcp) await ensureNotionFavorites();
+    const favs = favOnly ? notionFavorites() : [];
+
     if (st.connected.notionMcp) {
       const by = opValues(q, "par").map(norm);
       const ids = Object.entries(users())
@@ -322,20 +427,40 @@ export const notionSource: SourceDef = {
         .map(([id]) => id);
       const created = rangeOf(q, "cree");
       const edited = rangeOf(q, "modifie");
-      tasks.push(
-        mcpSearch(q.text, {
-          createdByMe: by.includes("moi") || by.includes("me"),
-          createdBy: ids,
-          created: created ?? undefined,
-          edited: edited ?? undefined,
-          sortRecent: tri === "recent",
-          pageSize: Math.min(limit, 25),
-        }).then((items) => {
-          // mémorisés localement : la prochaine frappe les propose instantanément
-          upsertItems("notion", items);
-          return items;
-        }),
-      );
+      const opts = {
+        createdByMe: by.includes("moi") || by.includes("me"),
+        createdBy: ids,
+        created: created ?? undefined,
+        edited: edited ?? undefined,
+        sortRecent: tri === "recent",
+      };
+      if (favOnly && favs.length && favs.length <= 8) {
+        // ★ Favoris : une recherche Notion par favori, limitée à la page et à ses sous-pages
+        tasks.push(
+          (async () => {
+            const lists: ResultItem[][] = [];
+            for (let i = 0; i < favs.length; i += 4) {
+              const batch = await Promise.allSettled(
+                favs.slice(i, i + 4).map((f) => mcpSearch(q.text, { ...opts, pageUrl: f.url ?? f.id, pageSize: 10 })),
+              );
+              for (const b of batch) if (b.status === "fulfilled") lists.push(b.value);
+              if (!lists.length && batch.every((b) => b.status === "rejected")) throw (batch[0] as PromiseRejectedResult).reason;
+            }
+            const items = lists.flat();
+            upsertItems("notion", items);
+            rememberFavDescendants(items);
+            return items;
+          })(),
+        );
+      } else {
+        tasks.push(
+          mcpSearch(q.text, { ...opts, pageSize: Math.min(limit, 25) }).then((items) => {
+            // mémorisés localement : la prochaine frappe les propose instantanément
+            upsertItems("notion", items);
+            return items;
+          }),
+        );
+      }
     }
 
     if (st.connected.notion) {
@@ -378,7 +503,14 @@ export const notionSource: SourceDef = {
         merged.push(it);
       }
     }
-    return sortItems(merged.filter(applyFilters(q)), tri);
+    const filtered = merged.filter(applyFilters(q));
+    if (favOnly) {
+      // les favoris dont le titre correspond, en tête
+      const seen2 = new Set(filtered.map((i) => notionKey(i.id)));
+      const favHits = favoriteItems().filter((f) => !seen2.has(notionKey(f.id)) && q.tokens.every((t) => norm(f.title).includes(t)));
+      return sortItems([...favHits, ...filtered], tri);
+    }
+    return sortItems(filtered, tri);
   },
 
   emptyResults() {
@@ -425,6 +557,7 @@ export const notionSource: SourceDef = {
   },
 
   async sync({ full, progress }) {
+    void ensureNotionFavorites(full);
     const idx = getIndex("notion");
     const isFull = full || !idx.items.length;
     const since = isFull ? 0 : (idx.meta.lastSync ?? 0) - 10 * 60000;

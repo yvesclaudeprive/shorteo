@@ -132,7 +132,7 @@ const mails: ResultItem[] = [
 ].map((m) => ({ ...m, source: "mail" as const, kind: "thread", url: `https://mail.superhuman.com/demo/thread/${m.id}` }));
 
 export function loadDemoData(): void {
-  setIndex("notion", notion, { users: { u1: "Vous" } }, false);
+  setIndex("notion", notion, { users: { u1: "Vous" }, favorites: [{ id: "n1", title: notion[0].title }] }, false);
   setIndex("drive", drive, DEMO_DRIVE_META, false);
   setIndex("pipedrive", pipedrive, {}, false);
   setIndex("chatgpt", chatgpt, {}, false);

@@ -97,6 +97,8 @@ export interface Chip {
   label: string;
   op: string;
   value: string;
+  /** Icône de la pastille (filtre rapide) */
+  icon?: "star";
 }
 
 export interface DetailRow {

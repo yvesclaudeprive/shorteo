@@ -17,6 +17,7 @@ import {
 import { norm, recencyBoost, scoreEntry, toEntry } from "./search";
 import { ALL_ORDER, BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import { loadDemoData } from "../sources/demo";
+import { notionFavorites } from "../sources/notion";
 import type { Chip, ContactInfo, NativeTarget, ResultItem, SourceDef, SourceId, SourceKey } from "../sources/types";
 
 export interface Group {
@@ -136,9 +137,26 @@ function nativeRow(src: SourceDef, target: NativeTarget, query: string): ResultI
   };
 }
 
-/** Explication quand Notion ne renvoie rien (connexion incomplète). */
-function emptyHint(src: SourceDef, items: ResultItem[]): Partial<Group> {
-  if (src.key !== "notion" || items.length) return {};
+/** Explication quand une source ne peut rien montrer (connexion incomplète, historique non importé…). */
+export function emptyHint(src: SourceDef, items: ResultItem[], query = ""): Partial<Group> {
+  if (src.key === "chatgpt" || src.key === "claude") {
+    if (getIndex(src.key).items.length) return {};
+    const name = src.label;
+    return {
+      hint: `Vos conversations ${name} ne sont pas encore dans Shorteo : importez-les une fois (export officiel de ${name}, 2 minutes) pour les retrouver ici avec l'autocomplétion et le filtre de date. Entrée cherche déjà dans ${name}.`,
+      hintTab: "ai",
+    };
+  }
+  if (src.key !== "notion") return {};
+  const q = parseQuery(query, src);
+  if (q.ops.some((o) => o.key === "favoris") && !notionFavorites().length) {
+    const err = getIndex("notion").meta.favError as string | undefined;
+    return {
+      hint: `Aucun favori Notion connu${err ? ` (lecture des favoris impossible : ${err})` : ""}. Connectez la « Recherche complète » pour lire vos favoris, ou épinglez des pages avec ☆ dans l'aperçu.`,
+      hintTab: "notion",
+    };
+  }
+  if (items.length) return {};
   const c = settings().connected;
   if (!c.notionMcp)
     return {
@@ -205,7 +223,9 @@ function searchOne(id: number, key: SourceKey, query: string): void {
         if (id === seq) setGroups([{ key, source: key, items: actions, error: errorText(e) }], { liveLoading: false });
       });
     } else {
-      setGroups([{ key, source: key, items: [...(src.actions ? [] : actions), ...er] }], { liveLoading: false });
+      setGroups([{ key, source: key, items: [...(src.actions ? [] : actions), ...er], ...emptyHint(src, er, query) }], {
+        liveLoading: false,
+      });
     }
     return;
   }
@@ -215,7 +235,7 @@ function searchOne(id: number, key: SourceKey, query: string): void {
   const willLive = !!src.liveSearch && (src.wantsLive?.(q) ?? true);
   const wrap = (list: ResultItem[]): ResultItem[] =>
     !native ? [...actions, ...list] : src.nativeFirst ? [native, ...actions, ...list] : [...actions, ...list, native];
-  setGroups([{ key, source: key, items: wrap(local), loading: willLive }], {
+  setGroups([{ key, source: key, items: wrap(local), loading: willLive, ...(willLive ? {} : emptyHint(src, local, query)) }], {
     liveLoading: willLive,
   });
   if (!willLive) return;
@@ -226,7 +246,7 @@ function searchOne(id: number, key: SourceKey, query: string): void {
       const live = await src.liveSearch!(q, 25);
       if (id !== seq) return;
       const merged = merge(src, local, live, q.tokens);
-      setGroups([{ key, source: key, items: wrap(merged), ...emptyHint(src, merged) }], {
+      setGroups([{ key, source: key, items: wrap(merged), ...emptyHint(src, merged, query) }], {
         liveLoading: false,
         liveMs: Math.round(performance.now() - t0),
       });

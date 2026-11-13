@@ -1,6 +1,6 @@
 import { dragHandle } from "../app/drag";
 import { useEffect, useRef } from "react";
-import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX, Phone, Mail } from "lucide-react";
+import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX, Phone, Mail, Star } from "lucide-react";
 import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { indexVersion } from "../app/index-store";
@@ -16,6 +16,7 @@ import {
   previewItem,
   setHover,
   setSource,
+  toast,
   ui,
   willOpenInApp,
 } from "../app/controller";
@@ -24,6 +25,7 @@ import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ContactInfo, ResultItem } from "../sources/types";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
+import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
 import { FilterBar } from "./FilterBar";
 import { DriveShortcuts } from "./DriveShortcuts";
@@ -47,6 +49,24 @@ function SourcePills() {
         </button>
       ))}
     </nav>
+  );
+}
+
+/** Épingle une page Notion dans Shorteo : elle compte alors pour le filtre ★ Favoris. */
+function PinButton({ item }: { item: ResultItem }) {
+  useStore(settingsStore);
+  const on = isPinned(item);
+  return (
+    <button
+      className={`btn ${on ? "pin-on" : ""}`}
+      title="Ajoute la page au filtre ★ Favoris de Shorteo (rien n'est modifié dans Notion)"
+      onClick={() => {
+        const now = togglePin(item);
+        toast(now ? "Page ajoutée aux favoris Shorteo" : "Page retirée des favoris Shorteo", "success", 1600);
+      }}
+    >
+      <Star size={14} fill={on ? "currentColor" : "none"} /> {on ? "Épinglée" : "Épingler"}
+    </button>
   );
 }
 
@@ -316,6 +336,7 @@ function Preview() {
             {a.label}
           </button>
         ))}
+        {item.source === "notion" && <PinButton item={item} />}
       </div>
     </aside>
   );

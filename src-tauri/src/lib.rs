@@ -27,7 +27,7 @@ const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const ALLOWED_HOST_SUFFIXES: &[&str] = &[".notion.com", ".pipedrive.com", ".googleapis.com"];
 
 /** Outils MCP Notion autorisés : uniquement de la lecture. */
-const NOTION_MCP_READ_TOOLS: &[&str] = &["notion-search", "notion-fetch"];
+const NOTION_MCP_READ_TOOLS: &[&str] = &["notion-search", "notion-fetch", "notion-list-favorite-pages"];
 
 /// Schémas autorisés à l'ouverture (sites web + applications).
 const ALLOWED_SCHEMES: &[&str] = &[
@@ -826,7 +826,8 @@ async fn native_search(app: AppHandle, recipe: String) -> Result<String, String>
                     }
                     std::thread::sleep(Duration::from_millis(200));
                 }
-                std::thread::sleep(Duration::from_millis(2500));
+                // chatgpt.com met plus de temps à démarrer : sinon Ctrl+K va à la barre d'adresse
+                std::thread::sleep(Duration::from_millis(if recipe == "chatgpt_web" { 4500 } else { 2500 }));
             } else {
                 std::thread::sleep(Duration::from_millis(if cold { 5000 } else { 800 }));
             }
@@ -1584,6 +1585,10 @@ mod tests {
         assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(search)));
         assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(init)));
         assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some(create)));
+        let favs = r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"notion-list-favorite-pages","arguments":{}}}"#;
+        let fav_edit = r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"notion-update-page-favorites","arguments":{}}}"#;
+        assert!(method_allowed(&post, "https://mcp.notion.com/mcp", Some(favs)));
+        assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some(fav_edit)));
         assert!(!method_allowed(&post, "https://mcp.notion.com/mcp", Some("pas du json")));
         // Drive : liste des drives partagés et racine de « Mon Drive » en lecture
         assert!(method_allowed(&get, "https://www.googleapis.com/drive/v3/drives?pageSize=100", None));
