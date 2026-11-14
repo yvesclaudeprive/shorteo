@@ -23,7 +23,8 @@ import {
 import { parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
-import type { ContactInfo, ResultItem } from "../sources/types";
+import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
+import { shortcutLabel } from "../app/shortcuts";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
@@ -39,7 +40,7 @@ function SourcePills() {
         <button
           key={id}
           className={`pill ${id === source ? "active" : ""}`}
-          title={`${sourceLabel(id)} (Alt+${i + 1})`}
+          title={tabTitle(id, i)}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setSource(id)}
           style={{ ["--src" as string]: id === "all" ? "var(--accent)" : SOURCES[id].color }}
@@ -68,6 +69,13 @@ function PinButton({ item }: { item: ResultItem }) {
       <Star size={14} fill={on ? "currentColor" : "none"} /> {on ? "Épinglée" : "Épingler"}
     </button>
   );
+}
+
+/** Infobulle d'un onglet : Alt+n dans Shorteo, et le raccourci global de l'outil. */
+function tabTitle(id: SourceId, i: number): string {
+  const st = settingsStore.get();
+  const global = id === "all" ? st.shortcut : st.toolShortcuts[id];
+  return `${sourceLabel(id)} — Alt+${i + 1}${global ? ` · partout dans Windows : ${shortcutLabel(global)}` : ""}`;
 }
 
 function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; tokens: string[] }) {

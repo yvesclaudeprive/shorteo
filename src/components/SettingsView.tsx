@@ -18,10 +18,20 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { useStore } from "../app/store";
 import { settingsStore, updateSettings, saveSettingsNow, type OpenMode } from "../app/settings";
-import { closeSettings, errorText, syncAll, toast, ui } from "../app/controller";
+import { applyShortcuts, closeSettings, errorText, syncAll, toast, ui } from "../app/controller";
+import {
+  checkShortcut,
+  DEFAULT_SHORTCUT,
+  DEFAULT_TOOL_SHORTCUTS,
+  shortcutFromKey,
+  shortcutLabel,
+  type ShortcutCheck,
+  type ShortcutTarget,
+} from "../app/shortcuts";
 import { clearAllIndexes, getIndex, indexVersion, setIndex } from "../app/index-store";
 import { deleteSecret, getSecret, setSecret } from "../app/secrets";
 import { platform } from "../app/platform";
@@ -210,59 +220,124 @@ function Welcome() {
   );
 }
 
-function shortcutFromEvent(e: KeyboardEvent): string | null {
-  const mods: string[] = [];
-  if (e.ctrlKey) mods.push("Ctrl");
-  if (e.altKey) mods.push("Alt");
-  if (e.shiftKey) mods.push("Shift");
-  if (e.metaKey) mods.push("Super");
-  const code = e.code;
-  let key: string | null = null;
-  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
-  else if (/^Digit\d$/.test(code)) key = code.slice(5);
-  else if (/^F\d{1,2}$/.test(code)) key = code;
-  else if (code === "Space") key = "Space";
-  if (!key || !mods.length) return null;
-  return [...mods, key].join("+");
+/** Raccourcis globaux : un général + un par outil, modifiables, avec contrôle des conflits. */
+const SHORTCUT_ROWS: Array<{ target: ShortcutTarget; label: string; tile: SourceId; hint: string }> = [
+  { target: "all", label: "Shorteo (partout)", tile: "all", hint: "Ouvre ou ferme Shorteo" },
+  { target: "notion", label: "Notion", tile: "notion", hint: "Ouvre Shorteo sur Notion" },
+  { target: "drive", label: "Drive", tile: "drive", hint: "Ouvre Shorteo sur Drive" },
+  { target: "pipedrive", label: "Pipedrive", tile: "pipedrive", hint: "Ouvre Shorteo sur Pipedrive" },
+  { target: "mail", label: "Mails", tile: "mail", hint: "Ouvre Shorteo sur les mails" },
+  { target: "chatgpt", label: "ChatGPT", tile: "chatgpt", hint: "Ouvre Shorteo sur ChatGPT" },
+  { target: "claude", label: "Claude", tile: "claude", hint: "Ouvre Shorteo sur Claude" },
+];
+
+function ShortcutsSettings() {
+  const st = useStore(settingsStore);
+  const errors = useStore(ui).shortcutErrors;
+  const [capturing, setCapturing] = useState<ShortcutTarget | null>(null);
+  const [notes, setNotes] = useState<Partial<Record<ShortcutTarget, ShortcutCheck>>>({});
+  const [layout, setLayout] = useState<Map<string, string> | null>(null);
+  useEffect(() => {
+    // carte du clavier réel (AZERTY…) pour afficher la bonne lettre
+    const kb = (navigator as any).keyboard;
+    kb?.getLayoutMap?.().then((m: Map<string, string>) => setLayout(m)).catch(() => {});
+  }, []);
+
+  const current = (t: ShortcutTarget) => (t === "all" ? st.shortcut : st.toolShortcuts[t]);
+  const all = (): Partial<Record<ShortcutTarget, string>> => ({ all: st.shortcut, ...st.toolShortcuts });
+
+  const save = async (t: ShortcutTarget, accel: string) => {
+    if (t === "all") updateSettings({ shortcut: accel || DEFAULT_SHORTCUT });
+    else updateSettings({ toolShortcuts: { ...settingsStore.get().toolShortcuts, [t]: accel } });
+    const errs = await applyShortcuts().catch((e) => ({ [t]: errorText(e) }) as Record<string, string>);
+    if (errs[t]) toast(errs[t], "error", 7000);
+    else if (accel) toast(`Raccourci enregistré : ${shortcutLabel(accel)}`, "success", 2000);
+  };
+
+  const onKey = (t: ShortcutTarget, e: KeyboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    if (e.key === "Escape") {
+      (e.target as HTMLInputElement).blur();
+      return;
+    }
+    const accel = shortcutFromKey(e, layout);
+    if (!accel) return;
+    const check = checkShortcut(accel, t, all());
+    setNotes((n) => ({ ...n, [t]: check ?? undefined }));
+    if (check?.level === "error") return;
+    setCapturing(null);
+    (e.target as HTMLInputElement).blur();
+    void save(t, accel);
+  };
+
+  const resetAll = async () => {
+    updateSettings({ shortcut: DEFAULT_SHORTCUT, toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS } });
+    setNotes({});
+    const errs = await applyShortcuts();
+    toast(Object.keys(errs).length ? "Certains raccourcis sont déjà pris : voir ci-dessous" : "Raccourcis par défaut rétablis", Object.keys(errs).length ? "error" : "success");
+  };
+
+  return (
+    <div className="shortcuts">
+      <div className="field-label">Raccourcis clavier</div>
+      <div className="field-hint">
+        Fonctionnent partout dans Windows. Cliquez sur un raccourci puis appuyez sur la nouvelle combinaison. Par défaut :
+        Ctrl+Maj+Alt + l'initiale de l'outil, une combinaison que ni Windows ni Google Docs, Word ou les navigateurs
+        n'utilisent. Pressé une 2ᵉ fois, le raccourci referme Shorteo.
+      </div>
+      <div className="sc-list">
+        {SHORTCUT_ROWS.map((r) => {
+          const accel = current(r.target);
+          const err = errors[r.target];
+          const note = notes[r.target];
+          return (
+            <div key={r.target} className="sc-row">
+              <span className="sc-name">
+                <SourceTile id={r.tile} size={18} />
+                <span>
+                  {r.label}
+                  <span className="sc-hint">{r.hint}</span>
+                </span>
+              </span>
+              <input
+                readOnly
+                className={`shortcut sc-input ${capturing === r.target ? "capturing" : ""} ${err ? "bad" : ""}`}
+                value={capturing === r.target ? "Appuyez sur la combinaison…" : accel ? shortcutLabel(accel) : "Aucun"}
+                onFocus={() => setCapturing(r.target)}
+                onBlur={() => setCapturing((c) => (c === r.target ? null : c))}
+                onKeyDown={(e) => onKey(r.target, e)}
+              />
+              {r.target !== "all" && accel ? (
+                <button className="icon-btn sc-clear" title="Désactiver ce raccourci" onClick={() => void save(r.target, "")}>
+                  <X size={14} />
+                </button>
+              ) : (
+                <span className="sc-clear" />
+              )}
+              {(err || note) && (
+                <div className={`sc-msg ${err || note?.level === "error" ? "bad" : "warn"}`}>{err ?? note?.message}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn small" onClick={() => void resetAll()}>
+        <RefreshCw size={13} /> Rétablir les raccourcis par défaut
+      </button>
+    </div>
+  );
 }
 
 function General() {
   const st = useStore(settingsStore);
-  const [capturing, setCapturing] = useState(false);
   const [autostart, setAutostart] = useState(false);
   useEffect(() => {
     void platform.autostartEnabled().then(setAutostart).catch(() => {});
   }, []);
-  const applyShortcut = async (sc: string) => {
-    try {
-      await platform.setShortcut(sc);
-      updateSettings({ shortcut: sc });
-      toast(`Raccourci : ${sc}`, "success");
-    } catch (e) {
-      toast(errorText(e), "error", 6000);
-    }
-  };
   return (
     <div className="tab">
       <h2>Général</h2>
-      <Field label="Raccourci global" hint="Cliquez puis appuyez sur la combinaison voulue (au moins Ctrl, Alt ou Maj). Évitez Alt+Espace, déjà utilisé par ChatGPT.">
-        <input
-          readOnly
-          className={`shortcut ${capturing ? "capturing" : ""}`}
-          value={capturing ? "Appuyez sur la combinaison…" : st.shortcut.replace("Shift", "Maj").replace("Space", "Espace")}
-          onFocus={() => setCapturing(true)}
-          onBlur={() => setCapturing(false)}
-          onKeyDown={(e) => {
-            e.preventDefault();
-            const sc = shortcutFromEvent(e);
-            if (sc) {
-              setCapturing(false);
-              (e.target as HTMLInputElement).blur();
-              void applyShortcut(sc);
-            }
-          }}
-        />
-      </Field>
+      <ShortcutsSettings />
       <Field label="Thème">
         <select value={st.theme} onChange={(e) => updateSettings({ theme: e.target.value as typeof st.theme })}>
           <option value="auto">Automatique (comme Windows)</option>
@@ -1056,10 +1131,8 @@ function TransferTab() {
     try {
       const path = await platform.pickConfigFile();
       if (!path) return;
-      const before = settingsStore.get().shortcut;
       const count = await importConfig(await platform.readJsonFile(path), pwIn);
-      const after = settingsStore.get().shortcut;
-      if (after !== before) await platform.setShortcut(after).catch((e) => toast(errorText(e), "error", 8000));
+      await applyShortcuts().catch((e) => toast(errorText(e), "error", 8000));
       setPwIn("");
       toast(`Configuration importée (${count} clés). Synchronisation en cours…`, "success", 8000);
       void syncAll(true);

@@ -10,6 +10,7 @@ import { pipedriveSource } from "../src/sources/pipedrive";
 import { claudeSource, chatgptSource } from "../src/sources/ai";
 import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection, emptyHint } from "../src/app/controller";
 import { parseFavorites } from "../src/sources/notion-mcp";
+import { checkShortcut, DEFAULT_SHORTCUT, DEFAULT_TOOL_SHORTCUTS, sameShortcut, shortcutFromKey, shortcutLabel } from "../src/app/shortcuts";
 import { platform } from "../src/app/platform";
 import type { ResultItem } from "../src/sources/types";
 
@@ -423,5 +424,36 @@ describe("Entrée : recherche dans l'outil, jamais l'élément survolé", () => 
     moveSelection(1);
     await openSelected();
     expect(open).toHaveBeenCalledWith("https://example.com/x");
+  });
+});
+
+describe("Raccourcis : un général + un par outil", () => {
+  const all = { all: DEFAULT_SHORTCUT, ...DEFAULT_TOOL_SHORTCUTS };
+  it("raccourcis par défaut : affichage en français, tous acceptés, aucun en double", () => {
+    expect(shortcutLabel("Ctrl+Alt+Shift+D")).toBe("Ctrl+Maj+Alt+D");
+    expect(shortcutLabel(DEFAULT_SHORTCUT)).toBe("Ctrl+Maj+Espace");
+    for (const [t, a] of Object.entries(all)) expect(checkShortcut(a, t as any, all)).toBeNull();
+    const list = Object.values(all);
+    expect(new Set(list).size).toBe(list.length);
+  });
+  it("clavier AZERTY : la touche marquée A donne bien A", () => {
+    const azerty = new Map([["KeyQ", "a"], ["Semicolon", "m"]]);
+    const ev = { ctrlKey: true, altKey: true, shiftKey: true, metaKey: false, code: "KeyQ", key: "Ă" };
+    expect(shortcutFromKey(ev, azerty)).toBe("Ctrl+Alt+Shift+A");
+    expect(shortcutFromKey({ ...ev, code: "Semicolon", key: "?" }, azerty)).toBe("Ctrl+Alt+Shift+M");
+    expect(shortcutFromKey({ ...ev, ctrlKey: false, altKey: false, shiftKey: false }, azerty)).toBeNull();
+  });
+  it("refuse ce qui volerait une touche courante ou un caractère AltGr", () => {
+    expect(checkShortcut("Ctrl+C", "drive", all)?.level).toBe("error");
+    expect(checkShortcut("Ctrl+Alt+E", "drive", all)?.level).toBe("error");
+    expect(checkShortcut("Ctrl+Alt+2", "drive", all)?.level).toBe("error");
+    expect(checkShortcut("Shift+D", "drive", all)?.level).toBe("error");
+    expect(checkShortcut("Alt+Tab", "drive", all)?.level).toBe("error");
+    expect(checkShortcut("Ctrl+Alt+Shift+N", "drive", all)?.message).toMatch(/Déjà utilisé dans Shorteo/);
+  });
+  it("prévient pour Ctrl+Alt (AltGr) et Alt+Espace", () => {
+    expect(checkShortcut("Ctrl+Alt+D", "drive", all)?.level).toBe("warn");
+    expect(checkShortcut("Alt+Space", "drive", all)?.level).toBe("warn");
+    expect(sameShortcut("Shift+Ctrl+Alt+d", "Ctrl+Alt+Shift+D")).toBe(true);
   });
 });

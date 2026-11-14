@@ -42,8 +42,10 @@ const ALLOWED_SCHEMES: &[&str] = &[
 ];
 
 struct AppState {
-    shortcut: Mutex<Option<Shortcut>>,
-    shortcut_error: Mutex<Option<String>>,
+    /// Raccourcis actifs : cible (« all » = général, ou un outil) → raccourci
+    shortcuts: Mutex<HashMap<String, Shortcut>>,
+    /// Raccourcis refusés : cible → raison
+    shortcut_errors: Mutex<HashMap<String, String>>,
     hide_on_blur: Mutex<bool>,
     blur_suspended: Mutex<bool>,
     oauth: Mutex<Option<TcpListener>>,
@@ -888,50 +890,91 @@ fn native_log_clear(state: State<AppState>) {
 // Raccourci global
 // ---------------------------------------------------------------------------
 
-fn register_shortcut(app: &AppHandle, s: &str) -> Result<Shortcut, String> {
-    let sc: Shortcut = s
-        .parse()
-        .map_err(|e| format!("Raccourci invalide « {s} » : {e}"))?;
-    app.global_shortcut()
-        .register(sc)
-        .map_err(|e| format!("Raccourci « {s} » indisponible (déjà utilisé par une autre application ?) : {e}"))?;
-    Ok(sc)
+/// Cibles possibles : « all » (fenêtre générale) ou un outil.
+const SHORTCUT_TARGETS: &[&str] = &["all", "notion", "drive", "pipedrive", "mail", "chatgpt", "claude"];
+
+/// Enregistre tous les raccourcis (général + un par outil). Les précédents sont libérés.
+/// Renvoie, pour chaque raccourci refusé, la raison (déjà pris ailleurs, en double…).
+fn apply_shortcuts(app: &AppHandle, wanted: &[(String, String)]) -> HashMap<String, String> {
+    let state = app.state::<AppState>();
+    let mut cur = state.shortcuts.lock().unwrap();
+    for (_, sc) in cur.drain() {
+        let _ = app.global_shortcut().unregister(sc);
+    }
+    let mut errors = HashMap::new();
+    let mut used: HashMap<u32, String> = HashMap::new();
+    for (target, accel) in wanted {
+        let accel = accel.trim();
+        if accel.is_empty() || !SHORTCUT_TARGETS.contains(&target.as_str()) {
+            continue;
+        }
+        let sc: Shortcut = match accel.parse() {
+            Ok(sc) => sc,
+            Err(e) => {
+                errors.insert(target.clone(), format!("Raccourci invalide « {accel} » : {e}"));
+                continue;
+            }
+        };
+        if let Some(other) = used.get(&sc.id()) {
+            errors.insert(target.clone(), format!("« {accel} » est déjà utilisé dans Shorteo ({other})"));
+            continue;
+        }
+        match app.global_shortcut().register(sc) {
+            Ok(()) => {
+                used.insert(sc.id(), target.clone());
+                cur.insert(target.clone(), sc);
+            }
+            Err(e) => {
+                errors.insert(
+                    target.clone(),
+                    format!("« {accel} » est déjà utilisé par une autre application ({e})"),
+                );
+            }
+        }
+    }
+    *state.shortcut_errors.lock().unwrap() = errors.clone();
+    errors
+}
+
+/// Raccourci pressé : fenêtre générale, ou ouverture directe sur un outil.
+fn on_shortcut(app: &AppHandle, pressed: &Shortcut) {
+    let target = {
+        let state = app.state::<AppState>();
+        let map = state.shortcuts.lock().unwrap();
+        map.iter().find(|(_, sc)| sc.id() == pressed.id()).map(|(t, _)| t.clone())
+    };
+    match target.as_deref() {
+        None | Some("all") => toggle_window(app),
+        Some(tool) => {
+            if let Some(w) = main_window(app) {
+                let was_open = w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false);
+                show_window(app);
+                let _ = w.emit("open-source", serde_json::json!({ "target": tool, "wasOpen": was_open }));
+            }
+        }
+    }
 }
 
 #[tauri::command]
-fn set_shortcut(app: AppHandle, state: State<AppState>, shortcut: String) -> Result<(), String> {
-    let mut current = state.shortcut.lock().unwrap();
-    let previous = current.take();
-    if let Some(old) = previous {
-        let _ = app.global_shortcut().unregister(old);
-    }
-    match register_shortcut(&app, &shortcut) {
-        Ok(sc) => {
-            *current = Some(sc);
-            *state.shortcut_error.lock().unwrap() = None;
-            Ok(())
-        }
-        Err(e) => {
-            if let Some(old) = previous {
-                if app.global_shortcut().register(old).is_ok() {
-                    *current = Some(old);
-                }
-            }
-            Err(e)
-        }
-    }
+fn set_shortcuts(app: AppHandle, shortcuts: HashMap<String, String>) -> HashMap<String, String> {
+    let wanted: Vec<(String, String)> = SHORTCUT_TARGETS
+        .iter()
+        .filter_map(|t| shortcuts.get(*t).map(|a| (t.to_string(), a.clone())))
+        .collect();
+    apply_shortcuts(&app, &wanted)
 }
 
 #[derive(Serialize)]
 struct ShortcutStatus {
+    /// raccourci général refusé (rétrocompatibilité)
     error: Option<String>,
+    errors: HashMap<String, String>,
 }
 
 #[tauri::command]
 fn shortcut_status(state: State<AppState>) -> ShortcutStatus {
-    ShortcutStatus {
-        error: state.shortcut_error.lock().unwrap().clone(),
-    }
+    let errors = state.shortcut_errors.lock().unwrap().clone();
+    ShortcutStatus { error: errors.get("all").cloned(), errors }
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,21 +1424,45 @@ async fn import_ai_history(path: String, kind: String) -> Result<Vec<Conversatio
 // Démarrage
 // ---------------------------------------------------------------------------
 
-fn read_startup_settings(app: &AppHandle) -> (String, bool, bool) {
+fn read_startup_settings(app: &AppHandle) -> (Vec<(String, String)>, bool, bool) {
     let path = data_dir(app).ok().map(|d| d.join("settings.json"));
     let raw = path.as_ref().and_then(|p| fs::read_to_string(p).ok());
     let first_run = raw.is_none();
     let v: serde_json::Value = raw
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or(serde_json::Value::Null);
-    let shortcut = v
+    let general = v
         .get("shortcut")
         .and_then(|x| x.as_str())
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(DEFAULT_SHORTCUT)
         .to_string();
+    let mut shortcuts = vec![("all".to_string(), general)];
+    // raccourcis par outil (absents : ceux par défaut, fixés par l'interface au premier lancement)
+    let tools = v.get("toolShortcuts").and_then(|x| x.as_object());
+    for t in SHORTCUT_TARGETS.iter().skip(1) {
+        let accel = match tools {
+            Some(m) => m.get(*t).and_then(|x| x.as_str()).unwrap_or("").to_string(),
+            None => default_tool_shortcut(t).to_string(),
+        };
+        shortcuts.push((t.to_string(), accel));
+    }
     let hide = v.get("hideOnBlur").and_then(|x| x.as_bool()).unwrap_or(true);
-    (shortcut, hide, first_run)
+    (shortcuts, hide, first_run)
+}
+
+/// Raccourcis par défaut des outils : Ctrl+Maj+Alt + initiale (libres sous Windows,
+/// dans Google Docs / Word, et sans conflit avec AltGr sur un clavier AZERTY).
+fn default_tool_shortcut(tool: &str) -> &'static str {
+    match tool {
+        "notion" => "Ctrl+Alt+Shift+N",
+        "drive" => "Ctrl+Alt+Shift+D",
+        "pipedrive" => "Ctrl+Alt+Shift+P",
+        "mail" => "Ctrl+Alt+Shift+M",
+        "chatgpt" => "Ctrl+Alt+Shift+G",
+        "claude" => "Ctrl+Alt+Shift+C",
+        _ => "",
+    }
 }
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -1453,9 +1520,9 @@ pub fn run() {
         }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        toggle_window(app);
+                        on_shortcut(app, shortcut);
                     }
                 })
                 .build(),
@@ -1468,8 +1535,8 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
-            shortcut: Mutex::new(None),
-            shortcut_error: Mutex::new(None),
+            shortcuts: Mutex::new(HashMap::new()),
+            shortcut_errors: Mutex::new(HashMap::new()),
             hide_on_blur: Mutex::new(true),
             blur_suspended: Mutex::new(false),
             oauth: Mutex::new(None),
@@ -1479,19 +1546,18 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
-            let (shortcut, hide, first_run) = read_startup_settings(&handle);
+            let (mut shortcuts, hide, first_run) = read_startup_settings(&handle);
             {
                 let state = handle.state::<AppState>();
                 *state.hide_on_blur.lock().unwrap() = hide;
-                match register_shortcut(&handle, &shortcut) {
-                    Ok(sc) => *state.shortcut.lock().unwrap() = Some(sc),
-                    Err(e) => {
-                        *state.shortcut_error.lock().unwrap() = Some(e);
-                        if shortcut != DEFAULT_SHORTCUT {
-                            if let Ok(sc) = register_shortcut(&handle, DEFAULT_SHORTCUT) {
-                                *state.shortcut.lock().unwrap() = Some(sc);
-                            }
-                        }
+                let errors = apply_shortcuts(&handle, &shortcuts);
+                // raccourci général indisponible : on garde au moins celui par défaut
+                if errors.contains_key("all") && shortcuts[0].1 != DEFAULT_SHORTCUT {
+                    shortcuts[0].1 = DEFAULT_SHORTCUT.to_string();
+                    let retry = apply_shortcuts(&handle, &shortcuts);
+                    if !retry.contains_key("all") {
+                        let mut e = state.shortcut_errors.lock().unwrap();
+                        e.insert("all".into(), format!("{} — Ctrl+Maj+Espace utilisé à la place", errors["all"]));
                     }
                 }
             }
@@ -1545,7 +1611,7 @@ pub fn run() {
             secret_delete,
             apps_status,
             open_url,
-            set_shortcut,
+            set_shortcuts,
             shortcut_status,
             http_request,
             oauth_prepare,
@@ -1593,6 +1659,16 @@ mod tests {
         // Drive : liste des drives partagés et racine de « Mon Drive » en lecture
         assert!(method_allowed(&get, "https://www.googleapis.com/drive/v3/drives?pageSize=100", None));
         assert!(!method_allowed(&post, "https://www.googleapis.com/drive/v3/drives", Some("{}")));
+    }
+
+    #[test]
+    fn raccourcis_par_defaut_valides_et_distincts() {
+        let mut ids = HashSet::new();
+        assert!(ids.insert(DEFAULT_SHORTCUT.parse::<Shortcut>().unwrap().id()));
+        for t in SHORTCUT_TARGETS.iter().skip(1) {
+            let sc: Shortcut = default_tool_shortcut(t).parse().expect("raccourci par défaut valide");
+            assert!(ids.insert(sc.id()), "raccourci en double : {t}");
+        }
     }
 
     #[test]

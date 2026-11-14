@@ -2742,3 +2742,95 @@ button.fcheck:hover:not(.on) {
   color: var(--text);
   background: var(--layer-active);
 }
+
+/* --- Raccourcis clavier (général + un par outil) --- */
+.shortcuts {
+  margin-bottom: 18px;
+}
+
+.sc-list {
+  margin: 10px 0 10px;
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  overflow: hidden;
+}
+
+.sc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 12px;
+}
+
+.sc-row + .sc-row {
+  border-top: 1px solid var(--stroke);
+}
+
+.sc-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.sc-name > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sc-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.field-control input.sc-input,
+input.sc-input {
+  height: 32px;
+  width: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  outline: 0;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1px var(--stroke-strong);
+}
+
+input.sc-input.capturing {
+  box-shadow:
+    inset 0 0 0 1px var(--accent),
+    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+input.sc-input.bad {
+  box-shadow: inset 0 0 0 1px #e5484d;
+}
+
+.sc-clear {
+  width: 30px;
+  height: 30px;
+}
+
+.sc-msg {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.sc-msg.bad {
+  color: #e5484d;
+}
+
+.sc-msg.warn {
+  color: #f2b84b;
+}
+
+:root[data-theme="light"] .sc-msg.warn {
+  color: #a86a06;
+}

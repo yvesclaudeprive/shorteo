@@ -211,15 +211,15 @@ export const platform = {
     await invoke("suspend_blur", { suspended });
   },
 
-  async setShortcut(shortcut: string): Promise<void> {
-    if (!isTauri) return;
-    await invoke("set_shortcut", { shortcut });
+  /** Enregistre tous les raccourcis globaux ; renvoie ceux refusés (cible → raison). */
+  async setShortcuts(shortcuts: Record<string, string>): Promise<Record<string, string>> {
+    if (!isTauri) return {};
+    return invoke("set_shortcuts", { shortcuts });
   },
 
-  async shortcutError(): Promise<string | null> {
-    if (!isTauri) return null;
-    const s = await invoke<{ error: string | null }>("shortcut_status");
-    return s.error;
+  async shortcutStatus(): Promise<{ error: string | null; errors: Record<string, string> }> {
+    if (!isTauri) return { error: null, errors: {} };
+    return invoke("shortcut_status");
   },
 
   async oauthPrepare(): Promise<number> {
@@ -279,5 +279,10 @@ export const platform = {
   async on(event: string, handler: () => void): Promise<UnlistenFn> {
     if (!isTauri) return () => {};
     return listen(event, () => handler());
+  },
+
+  async onPayload<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return listen<T>(event, (e) => handler(e.payload));
   },
 };

@@ -1,5 +1,7 @@
 import { createStore } from "./store";
 import { platform } from "./platform";
+import { DEFAULT_TOOL_SHORTCUTS } from "./shortcuts";
+import type { SourceKey } from "../sources/types";
 
 export type OpenMode = "app-if-running" | "app-if-installed" | "browser";
 export type Theme = "auto" | "light" | "dark";
@@ -10,6 +12,8 @@ export type Theme = "auto" | "light" | "dark";
  */
 export interface Settings {
   shortcut: string;
+  /** Un raccourci par outil (vide = aucun) : ouvre Shorteo directement sur l'outil */
+  toolShortcuts: Record<SourceKey, string>;
   hideOnBlur: boolean;
   theme: Theme;
   syncMinutes: number;
@@ -46,6 +50,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   shortcut: "Ctrl+Shift+Space",
+  toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS },
   hideOnBlur: true,
   theme: "auto",
   syncMinutes: 2,
@@ -99,6 +104,7 @@ export async function loadSettings(): Promise<boolean> {
       ...DEFAULT_SETTINGS,
       ...parsed,
       connected: { ...DEFAULT_SETTINGS.connected, ...(parsed.connected ?? {}) },
+      toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS, ...(parsed.toolShortcuts ?? {}) },
     });
     // v2 : Notion et Superhuman s'ouvrent dans leur application dès qu'elle est installée
     if ((parsed.schema ?? 1) < 2) {

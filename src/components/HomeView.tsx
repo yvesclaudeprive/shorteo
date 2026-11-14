@@ -1,6 +1,7 @@
 import { dragHandle } from "../app/drag";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { History } from "lucide-react";
+import { shortcutLabel } from "../app/shortcuts";
 import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { openItem, openSettings, setSource, ui } from "../app/controller";
@@ -41,6 +42,12 @@ const PLACEHOLDERS: Record<SourceId, string> = {
   chatgpt: "Demander à ChatGPT…",
   claude: "Demander à Claude…",
 };
+
+/** Raccourci global d'un outil (vide si désactivé). */
+function toolShortcut(id: SourceId): string {
+  const st = settingsStore.get();
+  return id === "all" ? "" : st.toolShortcuts[id] ?? "";
+}
 
 export function HomeView() {
   const s = useStore(ui);
@@ -136,7 +143,13 @@ export function HomeView() {
         ) : (
           <>
             {barMeta(id) && <span className="bar-meta">{barMeta(id)}</span>}
-            <kbd className="bar-kbd">Alt+{index + 1}</kbd>
+            {toolShortcut(id) ? (
+              <kbd className="bar-kbd" title={`Partout dans Windows (dans Shorteo : Alt+${index + 1})`}>
+                {shortcutLabel(toolShortcut(id))}
+              </kbd>
+            ) : (
+              <kbd className="bar-kbd">Alt+{index + 1}</kbd>
+            )}
           </>
         )}
       </label>

@@ -52,6 +52,8 @@ export interface UIState {
   settingsTab: string;
   hiddenAt: number;
   apps: Record<string, { running: boolean; installed: boolean }>;
+  /** Raccourcis globaux refusés par Windows (cible → raison) */
+  shortcutErrors: Record<string, string>;
 }
 
 const NO_COMP = { items: [], ghost: "", start: 0, end: 0, index: 0, open: false, touched: false };
@@ -74,6 +76,7 @@ export const ui = createStore<UIState>({
   settingsTab: "general",
   hiddenAt: 0,
   apps: {},
+  shortcutErrors: {},
 });
 
 export const itemKey = (it: ResultItem) => `${it.source}:${it.id}`;
@@ -855,6 +858,25 @@ export async function syncAll(full = false): Promise<void> {
 // Démarrage
 // ---------------------------------------------------------------------------
 
+/** Enregistre auprès de Windows le raccourci général et ceux des outils. */
+export async function applyShortcuts(): Promise<Record<string, string>> {
+  const st = settings();
+  const errors = await platform.setShortcuts({ all: st.shortcut, ...st.toolShortcuts });
+  ui.set({ shortcutErrors: errors });
+  return errors;
+}
+
+/** Raccourci d'un outil : ouvre Shorteo sur l'outil ; pressé de nouveau, referme. */
+function onToolShortcut(p: { target: SourceId; wasOpen: boolean }): void {
+  const s = ui.get();
+  if (p.wasOpen && s.mode === "search" && s.source === p.target) {
+    void hideWindow();
+    return;
+  }
+  if (s.mode === "settings") closeSettings();
+  setSource(p.target);
+}
+
 function onShown(): void {
   const s = ui.get();
   if (s.mode !== "settings" && Date.now() - s.hiddenAt > 90000) goHome();
@@ -878,9 +900,11 @@ export async function init(): Promise<void> {
   await platform.on("window-hidden", () => ui.set({ hiddenAt: Date.now() }));
   await platform.on("open-settings", () => openSettings());
   await platform.on("sync-now", () => void syncAll(false));
+  await platform.onPayload<{ target: SourceId; wasOpen: boolean }>("open-source", onToolShortcut);
 
-  const err = await platform.shortcutError();
-  if (err) toast(err, "error", 8000);
+  const status = await platform.shortcutStatus();
+  ui.set({ shortcutErrors: status.errors });
+  if (status.error) toast(status.error, "error", 8000);
 
   void refreshApps();
   window.setTimeout(() => void syncAll(false), 1500);

@@ -87,3 +87,30 @@ fn bloc_notes_premier_plan_frappe_et_collage() {
     assert_eq!(body, "/to:hanane search", "texte obtenu dans le Bloc-notes : {text}");
     assert!(last == "/" || last == ":", "touche de recherche : « {last} » au lieu de « / » ou « : »");
 }
+
+/// Les raccourcis proposés par défaut sont libres sur un Windows standard :
+/// Windows accepte de les réserver (RegisterHotKey échoue si un autre programme les a pris).
+#[test]
+#[ignore = "nécessite un bureau Windows interactif (lancé en CI)"]
+fn raccourcis_par_defaut_libres_sous_windows() {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        RegisterHotKey, UnregisterHotKey, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT,
+    };
+    let all = MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT;
+    let list: &[(&str, u32, u32)] = &[
+        ("Ctrl+Maj+Espace (général)", MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 0x20),
+        ("Ctrl+Maj+Alt+N (Notion)", all, 0x4E),
+        ("Ctrl+Maj+Alt+D (Drive)", all, 0x44),
+        ("Ctrl+Maj+Alt+P (Pipedrive)", all, 0x50),
+        ("Ctrl+Maj+Alt+M (Mails)", all, 0x4D),
+        ("Ctrl+Maj+Alt+G (ChatGPT)", all, 0x47),
+        ("Ctrl+Maj+Alt+C (Claude)", all, 0x43),
+    ];
+    for (i, (name, mods, vk)) in list.iter().enumerate() {
+        let id = 0x5000 + i as i32;
+        let ok = unsafe { RegisterHotKey(std::ptr::null_mut(), id, *mods, *vk) };
+        assert!(ok != 0, "{name} est déjà pris sous Windows");
+        unsafe { UnregisterHotKey(std::ptr::null_mut(), id) };
+        println!("{name} : libre");
+    }
+}
