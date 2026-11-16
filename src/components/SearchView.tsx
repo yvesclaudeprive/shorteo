@@ -1,5 +1,5 @@
 import { dragHandle } from "../app/drag";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Copy, Globe, AppWindow, LoaderCircle, TriangleAlert, Plug, SearchX, Phone, Mail, Star } from "lucide-react";
 import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
@@ -24,7 +24,7 @@ import { parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
-import { shortcutLabel } from "../app/shortcuts";
+import { shortcutLabel, toolLetter } from "../app/shortcuts";
 import { ItemIcon, SourceTile, kindColor } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
@@ -32,10 +32,36 @@ import { FilterBar } from "./FilterBar";
 import { DriveShortcuts } from "./DriveShortcuts";
 import { TopActions } from "./TopBar";
 
+/** Vrai tant que la touche Alt seule est enfoncée (affiche les lettres des onglets). */
+function useAltHeld(): boolean {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Alt" && !e.ctrlKey) setHeld(true);
+      else if (e.ctrlKey) setHeld(false);
+    };
+    const up = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Alt") setHeld(false);
+    };
+    const reset = () => setHeld(false);
+    window.addEventListener("keydown", down, true);
+    window.addEventListener("keyup", up, true);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", down, true);
+      window.removeEventListener("keyup", up, true);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+  return held;
+}
+
 function SourcePills() {
   const { source } = useStore(ui);
+  const st = useStore(settingsStore);
+  const altHeld = useAltHeld();
   return (
-    <nav className="pills">
+    <nav className={`pills ${altHeld ? "alt-held" : ""}`}>
       {BAR_ORDER.map((id, i) => (
         <button
           key={id}
@@ -47,6 +73,7 @@ function SourcePills() {
         >
           <SourceTile id={id} size={16} />
           <span>{sourceLabel(id)}</span>
+          {altHeld && <kbd className="pill-key">{toolLetter(id, st.toolShortcuts)}</kbd>}
         </button>
       ))}
     </nav>
@@ -72,10 +99,10 @@ function PinButton({ item }: { item: ResultItem }) {
 }
 
 /** Infobulle d'un onglet : Alt+n dans Shorteo, et le raccourci global de l'outil. */
-function tabTitle(id: SourceId, i: number): string {
+function tabTitle(id: SourceId, _i: number): string {
   const st = settingsStore.get();
   const global = id === "all" ? st.shortcut : st.toolShortcuts[id];
-  return `${sourceLabel(id)} — Alt+${i + 1}${global ? ` · partout dans Windows : ${shortcutLabel(global)}` : ""}`;
+  return `${sourceLabel(id)} — dans Shorteo : Alt+${toolLetter(id, st.toolShortcuts)}${global ? ` · partout dans Windows : ${shortcutLabel(global)}` : ""}`;
 }
 
 function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; tokens: string[] }) {
@@ -386,7 +413,7 @@ function Footer() {
         <kbd>Tab</kbd> Compléter
       </span>
       <span>
-        <kbd>Alt+1…7</kbd> Outil
+        <kbd>Alt+lettre</kbd> Outil
       </span>
       <span className="grow" />
       <span className="status">

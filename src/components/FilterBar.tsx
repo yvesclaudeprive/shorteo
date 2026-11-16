@@ -235,7 +235,7 @@ export function FilterBar() {
     return (
       <div className="chips">
         <span className="chips-hint">
-          Astuce : <kbd>Alt+2</kbd> à <kbd>Alt+7</kbd> relance la même recherche dans un seul outil, avec ses filtres.
+          Astuce : <kbd>Alt</kbd> + la lettre d'un outil (maintenez <kbd>Alt</kbd> pour les voir) relance la même recherche dans cet outil, avec ses filtres.
         </span>
       </div>
     );

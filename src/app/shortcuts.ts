@@ -1,4 +1,4 @@
-import type { SourceKey } from "../sources/types";
+import type { SourceId, SourceKey } from "../sources/types";
 
 /**
  * Raccourcis globaux : un général (ouvre Shorteo) + un par outil (ouvre Shorteo
@@ -7,9 +7,23 @@ import type { SourceKey } from "../sources/types";
 
 export const DEFAULT_SHORTCUT = "Ctrl+Shift+Space";
 
-/** Ctrl+Maj+Alt + initiale : libres sous Windows, dans Google Docs / Word, et sans
- * conflit avec AltGr (= Ctrl+Alt) sur un clavier AZERTY. */
+/**
+ * Ctrl+Alt + une lettre (3 touches). Lettres choisies pour être libres sous Windows,
+ * ne produire aucun caractère avec AltGr (= Ctrl+Alt) sur un clavier AZERTY, et ne
+ * pas prendre les Ctrl+Alt de Google Docs (M commentaire, C/V mise en forme…) :
+ * N Notion, D Drive, P Pipedrive, S Superhuman (mails), G ChatGPT, L cLaude.
+ */
 export const DEFAULT_TOOL_SHORTCUTS: Record<SourceKey, string> = {
+  notion: "Ctrl+Alt+N",
+  drive: "Ctrl+Alt+D",
+  pipedrive: "Ctrl+Alt+P",
+  mail: "Ctrl+Alt+S",
+  chatgpt: "Ctrl+Alt+G",
+  claude: "Ctrl+Alt+L",
+};
+
+/** Anciens raccourcis par défaut (4 touches), remplacés automatiquement. */
+export const OLD_TOOL_SHORTCUTS: Record<SourceKey, string> = {
   notion: "Ctrl+Alt+Shift+N",
   drive: "Ctrl+Alt+Shift+D",
   pipedrive: "Ctrl+Alt+Shift+P",
@@ -17,6 +31,36 @@ export const DEFAULT_TOOL_SHORTCUTS: Record<SourceKey, string> = {
   chatgpt: "Ctrl+Alt+Shift+G",
   claude: "Ctrl+Alt+Shift+C",
 };
+
+/** Dans Shorteo, Alt + cette lettre bascule sur l'onglet (« T » = Partout / Tout). */
+export const ALL_LETTER = "T";
+
+/** Lettre d'un outil dans Shorteo : celle de son raccourci global (Ctrl+Alt+P → P). */
+export function toolLetter(id: SourceId, toolShortcuts: Partial<Record<SourceKey, string>>): string {
+  if (id === "all") return ALL_LETTER;
+  const key = split(toolShortcuts[id] ?? "").key;
+  if (/^[A-Z]$/i.test(key)) return key.toUpperCase();
+  return split(DEFAULT_TOOL_SHORTCUTS[id]).key;
+}
+
+/**
+ * Touche pressée dans Shorteo → onglet à afficher :
+ * Alt + lettre de l'outil, ou Alt / Ctrl + chiffre (1 = Partout, 2 = Notion…).
+ * Jamais avec AltGr (Ctrl+Alt) : on tape alors un caractère (@, #, €…).
+ */
+export function sourceFromKey(
+  e: { altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; key: string; code: string },
+  order: SourceId[],
+  toolShortcuts: Partial<Record<SourceKey, string>>,
+): SourceId | null {
+  if (e.metaKey || e.altKey === e.ctrlKey) return null;
+  const digit = /^Digit([1-9])$/.exec(e.code)?.[1] ?? (/^[1-9]$/.test(e.key) ? e.key : null);
+  if (digit) return order[Number(digit) - 1] ?? null;
+  if (!e.altKey || e.shiftKey) return null;
+  const letter = /^[a-z]$/i.test(e.key) ? e.key.toUpperCase() : /^Key([A-Z])$/.exec(e.code)?.[1];
+  if (!letter) return null;
+  return order.find((id) => toolLetter(id, toolShortcuts) === letter) ?? null;
+}
 
 export type ShortcutTarget = "all" | SourceKey;
 
@@ -79,6 +123,18 @@ export interface ShortcutCheck {
   message: string;
 }
 
+/** Ctrl+Alt + lettre déjà utilisés par des logiciels courants. */
+const CTRL_ALT_USED: Record<string, string> = {
+  M: "Google Docs et Sheets (insérer un commentaire)",
+  C: "Google Docs (copier la mise en forme)",
+  V: "Google Docs (coller la mise en forme)",
+  F: "Google Docs (note de bas de page)",
+  X: "Google Docs (orthographe)",
+  Z: "Google Docs (lecteur d'écran)",
+  R: "Word (symbole ®)",
+  T: "Word (symbole ™)",
+};
+
 const RESERVED: Array<[string, string]> = [
   ["Alt+Tab", "réservé par Windows (changer de fenêtre)"],
   ["Alt+F4", "réservé par Windows (fermer la fenêtre)"],
@@ -128,10 +184,8 @@ export function checkShortcut(
         message: `Sur un clavier AZERTY, Ctrl+Alt = AltGr : ${shortcutLabel(accel)} empêcherait de taper un caractère (@ # { [ € …).`,
       };
     }
-    return {
-      level: "warn",
-      message: "Ctrl+Alt = AltGr sur un clavier AZERTY, et Google Docs ou Word utilisent certains Ctrl+Alt : Ctrl+Maj+Alt est plus sûr.",
-    };
+    const used = CTRL_ALT_USED[key];
+    if (used) return { level: "warn", message: `${shortcutLabel(accel)} sert déjà dans ${used} : il n'y marchera plus.` };
   }
   if (sameShortcut(accel, "Alt+Space")) {
     return { level: "warn", message: "Alt+Espace est utilisé par ChatGPT et par le menu des fenêtres de Windows." };

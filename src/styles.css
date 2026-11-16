@@ -2907,3 +2907,19 @@ input.sc-input.bad {
   font-size: 11.5px;
   color: var(--faint);
 }
+
+/* lettres des onglets, visibles tant que Alt est enfoncée */
+.pill-key {
+  margin-left: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 5px;
+  font: 700 11px/1 var(--font);
+  color: #fff;
+  background: var(--src, var(--accent));
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--src, var(--accent)) 40%, transparent);
+  animation: rise 0.1s var(--ease);
+}

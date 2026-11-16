@@ -283,8 +283,10 @@ function ShortcutsSettings() {
       <div className="field-label">Raccourcis clavier</div>
       <div className="field-hint">
         Fonctionnent partout dans Windows. Cliquez sur un raccourci puis appuyez sur la nouvelle combinaison. Par défaut :
-        Ctrl+Maj+Alt + l'initiale de l'outil, une combinaison que ni Windows ni Google Docs, Word ou les navigateurs
-        n'utilisent. Pressé une 2ᵉ fois, le raccourci referme Shorteo.
+        Ctrl+Alt + une lettre, libre sous Windows et dans Google Docs. Pressé une 2ᵉ fois, le raccourci referme Shorteo.
+        <br />
+        <b>Dans Shorteo</b>, Alt + la même lettre bascule d'onglet (Alt+P → Pipedrive, Alt+T → Partout) : maintenez Alt pour
+        voir les lettres sur les onglets.
       </div>
       <div className="sc-list">
         {SHORTCUT_ROWS.map((r) => {

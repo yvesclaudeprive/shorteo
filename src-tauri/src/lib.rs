@@ -1451,16 +1451,16 @@ fn read_startup_settings(app: &AppHandle) -> (Vec<(String, String)>, bool, bool)
     (shortcuts, hide, first_run)
 }
 
-/// Raccourcis par défaut des outils : Ctrl+Maj+Alt + initiale (libres sous Windows,
-/// dans Google Docs / Word, et sans conflit avec AltGr sur un clavier AZERTY).
+/// Raccourcis par défaut des outils : Ctrl+Alt + une lettre (libres sous Windows et dans
+/// Google Docs, sans caractère AltGr sur un clavier AZERTY). Identiques à l'interface.
 fn default_tool_shortcut(tool: &str) -> &'static str {
     match tool {
-        "notion" => "Ctrl+Alt+Shift+N",
-        "drive" => "Ctrl+Alt+Shift+D",
-        "pipedrive" => "Ctrl+Alt+Shift+P",
-        "mail" => "Ctrl+Alt+Shift+M",
-        "chatgpt" => "Ctrl+Alt+Shift+G",
-        "claude" => "Ctrl+Alt+Shift+C",
+        "notion" => "Ctrl+Alt+N",
+        "drive" => "Ctrl+Alt+D",
+        "pipedrive" => "Ctrl+Alt+P",
+        "mail" => "Ctrl+Alt+S",
+        "chatgpt" => "Ctrl+Alt+G",
+        "claude" => "Ctrl+Alt+L",
         _ => "",
     }
 }

@@ -1,7 +1,8 @@
 import type { KeyboardEvent } from "react";
 import { createStore } from "./store";
 import { platform } from "./platform";
-import { loadSettings, settings, settingsStore, updateSettings } from "./settings";
+import { loadSettings, settings, settingsStore, shortcutsMigrated, updateSettings } from "./settings";
+import { sourceFromKey } from "./shortcuts";
 import { getIndex, loadIndex } from "./index-store";
 import { loadUsage, recordUsage, recentItems } from "./usage";
 import { NotConfiguredError } from "./http";
@@ -717,9 +718,10 @@ export async function copyLink(item: ResultItem | null = selectedItem()): Promis
 
 export function handleSearchKey(e: KeyboardEvent<HTMLInputElement>): void {
   const s = ui.get();
-  if ((e.altKey || e.ctrlKey) && /^[1-7]$/.test(e.key)) {
+  const target = sourceFromKey(e, BAR_ORDER, settings().toolShortcuts);
+  if (target) {
     e.preventDefault();
-    setSource(BAR_ORDER[Number(e.key) - 1]);
+    setSource(target);
     return;
   }
   if (e.ctrlKey && e.key === "Tab") {
@@ -914,6 +916,7 @@ export async function init(): Promise<void> {
   await platform.onPayload<{ target: SourceId; wasOpen: boolean }>("open-source", onToolShortcut);
 
   void syncAutostart();
+  if (shortcutsMigrated) await applyShortcuts().catch(() => {});
 
   const status = await platform.shortcutStatus();
   ui.set({ shortcutErrors: status.errors });

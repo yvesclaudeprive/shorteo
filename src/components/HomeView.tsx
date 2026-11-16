@@ -1,7 +1,7 @@
 import { dragHandle } from "../app/drag";
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { History } from "lucide-react";
-import { shortcutLabel } from "../app/shortcuts";
+import { shortcutLabel, sourceFromKey, toolLetter } from "../app/shortcuts";
 import { useStore } from "../app/store";
 import { settingsStore } from "../app/settings";
 import { openItem, openSettings, setSource, ui } from "../app/controller";
@@ -71,9 +71,10 @@ export function HomeView() {
   };
 
   const onKey = (e: KeyboardEvent<HTMLElement>, index: number) => {
-    if ((e.altKey || e.ctrlKey) && /^[1-7]$/.test(e.key)) {
+    const target = sourceFromKey(e, BAR_ORDER, settingsStore.get().toolShortcuts);
+    if (target) {
       e.preventDefault();
-      setSource(BAR_ORDER[Number(e.key) - 1], { query: "" });
+      setSource(target, { query: "" });
       return;
     }
     if (e.key === "ArrowDown" || (e.key === "Tab" && !e.shiftKey)) {
@@ -145,11 +146,11 @@ export function HomeView() {
           <>
             {barMeta(id) && <span className="bar-meta">{barMeta(id)}</span>}
             {toolShortcut(id) ? (
-              <kbd className="bar-kbd" title={`Partout dans Windows (dans Shorteo : Alt+${index + 1})`}>
+              <kbd className="bar-kbd" title={`Partout dans Windows ; dans Shorteo : Alt+${toolLetter(id, settingsStore.get().toolShortcuts)}`}>
                 {shortcutLabel(toolShortcut(id))}
               </kbd>
             ) : (
-              <kbd className="bar-kbd">Alt+{index + 1}</kbd>
+              <kbd className="bar-kbd">Alt+{toolLetter(id, settingsStore.get().toolShortcuts)}</kbd>
             )}
           </>
         )}
@@ -211,7 +212,7 @@ export function HomeView() {
           <kbd>↓</kbd> Naviguer
         </span>
         <span>
-          <kbd>Alt+1…7</kbd> Choisir un outil
+          <kbd>Alt+lettre</kbd> Choisir un outil
         </span>
         <span>
           <kbd>↵</kbd> Ouvrir

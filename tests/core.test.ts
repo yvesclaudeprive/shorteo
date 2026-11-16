@@ -10,7 +10,17 @@ import { pipedriveSource } from "../src/sources/pipedrive";
 import { claudeSource, chatgptSource } from "../src/sources/ai";
 import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection, emptyHint } from "../src/app/controller";
 import { parseFavorites } from "../src/sources/notion-mcp";
-import { checkShortcut, DEFAULT_SHORTCUT, DEFAULT_TOOL_SHORTCUTS, sameShortcut, shortcutFromKey, shortcutLabel } from "../src/app/shortcuts";
+import {
+  checkShortcut,
+  DEFAULT_SHORTCUT,
+  DEFAULT_TOOL_SHORTCUTS,
+  sameShortcut,
+  shortcutFromKey,
+  shortcutLabel,
+  sourceFromKey,
+  toolLetter,
+} from "../src/app/shortcuts";
+import { BAR_ORDER } from "../src/sources/registry";
 import { platform } from "../src/app/platform";
 import type { ResultItem } from "../src/sources/types";
 
@@ -431,6 +441,9 @@ describe("Raccourcis : un général + un par outil", () => {
   const all = { all: DEFAULT_SHORTCUT, ...DEFAULT_TOOL_SHORTCUTS };
   it("raccourcis par défaut : affichage en français, tous acceptés, aucun en double", () => {
     expect(shortcutLabel("Ctrl+Alt+Shift+D")).toBe("Ctrl+Maj+Alt+D");
+    expect(shortcutLabel(DEFAULT_TOOL_SHORTCUTS.drive)).toBe("Ctrl+Alt+D");
+    // 3 touches pour chaque outil
+    for (const a of Object.values(DEFAULT_TOOL_SHORTCUTS)) expect(a.split("+")).toHaveLength(3);
     expect(shortcutLabel(DEFAULT_SHORTCUT)).toBe("Ctrl+Maj+Espace");
     for (const [t, a] of Object.entries(all)) expect(checkShortcut(a, t as any, all)).toBeNull();
     const list = Object.values(all);
@@ -449,11 +462,42 @@ describe("Raccourcis : un général + un par outil", () => {
     expect(checkShortcut("Ctrl+Alt+2", "drive", all)?.level).toBe("error");
     expect(checkShortcut("Shift+D", "drive", all)?.level).toBe("error");
     expect(checkShortcut("Alt+Tab", "drive", all)?.level).toBe("error");
-    expect(checkShortcut("Ctrl+Alt+Shift+N", "drive", all)?.message).toMatch(/Déjà utilisé dans Shorteo/);
+    expect(checkShortcut("Ctrl+Alt+N", "drive", all)?.message).toMatch(/Déjà utilisé dans Shorteo/);
   });
-  it("prévient pour Ctrl+Alt (AltGr) et Alt+Espace", () => {
-    expect(checkShortcut("Ctrl+Alt+D", "drive", all)?.level).toBe("warn");
+  it("prévient pour les Ctrl+Alt de Google Docs et Alt+Espace", () => {
+    expect(checkShortcut("Ctrl+Alt+M", "drive", all)?.message).toMatch(/Google Docs/);
     expect(checkShortcut("Alt+Space", "drive", all)?.level).toBe("warn");
     expect(sameShortcut("Shift+Ctrl+Alt+d", "Ctrl+Alt+Shift+D")).toBe(true);
+  });
+});
+
+describe("Dans Shorteo : Alt + lettre change d'onglet", () => {
+  const ev = (o: Partial<{ altKey: boolean; ctrlKey: boolean; shiftKey: boolean; key: string; code: string }>) => ({
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    key: "",
+    code: "",
+    ...o,
+  });
+  const ts = { ...DEFAULT_TOOL_SHORTCUTS };
+  it("Alt + la lettre du raccourci de l'outil", () => {
+    expect(sourceFromKey(ev({ altKey: true, key: "p", code: "KeyP" }), BAR_ORDER, ts)).toBe("pipedrive");
+    expect(sourceFromKey(ev({ altKey: true, key: "d", code: "KeyD" }), BAR_ORDER, ts)).toBe("drive");
+    expect(sourceFromKey(ev({ altKey: true, key: "t", code: "KeyT" }), BAR_ORDER, ts)).toBe("all");
+    expect(toolLetter("mail", ts)).toBe("S");
+  });
+  it("suit le raccourci choisi (Ctrl+Alt+F pour Drive → Alt+F)", () => {
+    const custom = { ...ts, drive: "Ctrl+Alt+F" };
+    expect(sourceFromKey(ev({ altKey: true, key: "f", code: "KeyF" }), BAR_ORDER, custom)).toBe("drive");
+  });
+  it("clavier AZERTY : Alt+& (touche 1) donne Partout, Alt+é (touche 2) Notion", () => {
+    expect(sourceFromKey(ev({ altKey: true, key: "&", code: "Digit1" }), BAR_ORDER, ts)).toBe("all");
+    expect(sourceFromKey(ev({ altKey: true, key: "é", code: "Digit2" }), BAR_ORDER, ts)).toBe("notion");
+  });
+  it("AltGr (Ctrl+Alt) sert à taper un caractère : aucun changement d'onglet", () => {
+    expect(sourceFromKey(ev({ altKey: true, ctrlKey: true, key: "@", code: "Digit0" }), BAR_ORDER, ts)).toBeNull();
+    expect(sourceFromKey(ev({ key: "p", code: "KeyP" }), BAR_ORDER, ts)).toBeNull();
   });
 });

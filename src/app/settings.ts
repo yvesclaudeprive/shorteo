@@ -1,6 +1,6 @@
 import { createStore } from "./store";
 import { platform } from "./platform";
-import { DEFAULT_TOOL_SHORTCUTS } from "./shortcuts";
+import { DEFAULT_TOOL_SHORTCUTS, OLD_TOOL_SHORTCUTS } from "./shortcuts";
 import type { SourceKey } from "../sources/types";
 
 export type OpenMode = "app-if-running" | "app-if-installed" | "browser";
@@ -50,6 +50,9 @@ export interface Settings {
   schema: number;
 }
 
+/** Les raccourcis ont été mis à jour au chargement : à réenregistrer auprès de Windows. */
+export let shortcutsMigrated = false;
+
 export const DEFAULT_SETTINGS: Settings = {
   shortcut: "Ctrl+Shift+Space",
   toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS },
@@ -80,7 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
     "Password client en cours",
     "Password prospects en cours",
   ],
-  schema: 3,
+  schema: 4,
 };
 
 export const settingsStore = createStore<Settings>({ ...DEFAULT_SETTINGS });
@@ -117,6 +120,18 @@ export async function loadSettings(): Promise<boolean> {
     // v3 : Claude et ChatGPT s'ouvrent sur leur site (recherche saisie dans l'onglet)
     if ((parsed.schema ?? 1) < 3) {
       settingsStore.set({ claudeOpen: "browser", chatgptOpen: "browser", schema: 3 });
+      void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
+    }
+    // v4 : raccourcis des outils en 3 touches (Ctrl+Alt+lettre) au lieu de 4 ;
+    // ceux que vous aviez changés sont conservés
+    if ((parsed.schema ?? 1) < 4) {
+      const cur = settingsStore.get().toolShortcuts;
+      const next = { ...cur };
+      for (const k of Object.keys(OLD_TOOL_SHORTCUTS) as Array<keyof typeof OLD_TOOL_SHORTCUTS>) {
+        if (!cur[k] || cur[k] === OLD_TOOL_SHORTCUTS[k]) next[k] = DEFAULT_TOOL_SHORTCUTS[k];
+      }
+      settingsStore.set({ toolShortcuts: next, schema: 4 });
+      shortcutsMigrated = true;
       void platform.settingsSave(JSON.stringify(settingsStore.get(), null, 2));
     }
   } catch {
