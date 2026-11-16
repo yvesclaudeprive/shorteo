@@ -1474,7 +1474,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&open_i, &settings_i, &sync_i, &sep, &quit_i])?;
 
     let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Shorteo")
+        .tooltip(format!("Shorteo {}", app.package_info().version))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -1560,6 +1560,10 @@ pub fn run() {
                         e.insert("all".into(), format!("{} — Ctrl+Maj+Espace utilisé à la place", errors["all"]));
                     }
                 }
+            }
+            // version dans le titre de la fenêtre (barre des tâches, Alt+Tab)
+            if let Some(w) = main_window(&handle) {
+                let _ = w.set_title(&format!("Shorteo {}", handle.package_info().version));
             }
             build_tray(&handle)?;
             if first_run {

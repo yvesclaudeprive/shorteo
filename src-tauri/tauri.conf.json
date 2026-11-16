@@ -39,7 +39,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "publisher": "Yateo",
+    "publisher": "YATEO",
     "shortDescription": "Recherche rapide multi-outils",
     "icon": [
       "icons/32x32.png",

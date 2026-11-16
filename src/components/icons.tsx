@@ -41,7 +41,7 @@ const YATEO_PATHS = (
   </>
 );
 
-/** Logo Shorteo : une loupe dont le verre est le symbole Yateo (couleur héritée du texte). */
+/** Logo Shorteo : une loupe dont le verre est le symbole YATEO (couleur héritée du texte). */
 export function ShorteoLogo({ size = 20, className = "yateo-logo" }: { size?: number; className?: string }) {
   return (
     <svg className={className} width={size} height={size} viewBox="0 0 40 40" aria-label="Shorteo" role="img">

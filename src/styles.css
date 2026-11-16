@@ -2834,3 +2834,76 @@ input.sc-input.bad {
 :root[data-theme="light"] .sc-msg.warn {
   color: #a86a06;
 }
+
+/* version à côté du nom */
+.brand-version {
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+}
+
+/* case à cocher des paramètres */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 18px;
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  background: var(--layer);
+  box-shadow: inset 0 0 0 1px var(--stroke);
+  cursor: pointer;
+}
+
+.check-row input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.check-box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: transparent;
+  background: var(--layer-hover);
+  box-shadow: inset 0 0 0 1.5px var(--stroke-strong);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+
+.check-row input:checked + .check-box {
+  color: #fff;
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.check-row input:focus-visible + .check-box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.check-row > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.check-label {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.check-hint {
+  font-size: 11.5px;
+  color: var(--faint);
+}

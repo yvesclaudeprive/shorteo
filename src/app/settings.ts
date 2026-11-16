@@ -15,6 +15,8 @@ export interface Settings {
   /** Un raccourci par outil (vide = aucun) : ouvre Shorteo directement sur l'outil */
   toolShortcuts: Record<SourceKey, string>;
   hideOnBlur: boolean;
+  /** Lancer Shorteo au démarrage de Windows (coché par défaut) */
+  autostart: boolean;
   theme: Theme;
   syncMinutes: number;
   lastSource: string;
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shortcut: "Ctrl+Shift+Space",
   toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS },
   hideOnBlur: true,
+  autostart: true,
   theme: "auto",
   syncMinutes: 2,
   lastSource: "all",

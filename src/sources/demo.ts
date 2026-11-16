@@ -47,7 +47,7 @@ const DEMO_PARENT: Record<string, string> = {
 const DEMO_DRIVE_META = {
   rootId: "root-demo",
   drives: [
-    { id: "sd1", name: "Yateo — Équipe" },
+    { id: "sd1", name: "YATEO — Équipe" },
     { id: "sd2", name: "Clients — Archives" },
   ],
   rootsAt: Date.now(),
@@ -70,7 +70,7 @@ const drive: ResultItem[] = [
   ["d14", "Devis", "folder", 2 * D],
   ["d15", "Modèles", "folder", 12 * D],
   ["d16", "Dossier partagé par Paul", "folder", 6 * D],
-  ["d17", "Charte graphique Yateo.pdf", "pdf", 12 * D],
+  ["d17", "Charte graphique YATEO.pdf", "pdf", 12 * D],
 ].map(([id, title, kind, age], i) => ({
   id: id as string,
   source: "drive" as const,

@@ -13,6 +13,7 @@ import { BAR_ORDER, SOURCES, sourceLabel } from "../sources/registry";
 import type { SourceId } from "../sources/types";
 import { ItemIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
+import { APP_VERSION } from "../version";
 
 const UNITS: Partial<Record<SourceId, string>> = {
   notion: "pages",
@@ -162,9 +163,8 @@ export function HomeView() {
         <div className="brand">
           <ShorteoLogo size={22} />
           <span>Shorteo</span>
-          <span className="brand-by">
-            by Yateo
-          </span>
+          <span className="brand-version">v{APP_VERSION}</span>
+          <span className="brand-by">by YATEO</span>
         </div>
         <TopActions />
       </header>

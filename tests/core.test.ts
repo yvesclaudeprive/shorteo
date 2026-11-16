@@ -151,28 +151,28 @@ describe("Drive : sélecteur de dossiers (Mon Drive / Drives partagés)", () => 
         file("x1", "Devis type SEO", "s2", "sheet"),
         file("x2", "Devis ACME", "f2", "sheet"),
       ],
-      { rootId: "ROOT", drives: [{ id: "SD1", name: "Équipe Yateo" }], rootsAt: 1 },
+      { rootId: "ROOT", drives: [{ id: "SD1", name: "Équipe YATEO" }], rootsAt: 1 },
       false,
     );
   });
   it("trois entrées de départ : Mon Drive, Drives partagés, Partagés avec moi", () => {
     const r = folderRoots();
     expect(r.myDrive.map((f) => f.title)).toEqual(["Clients en cours", "Prospects en cours"]);
-    expect(r.shared.map((f) => f.title)).toEqual(["Équipe Yateo"]);
+    expect(r.shared.map((f) => f.title)).toEqual(["Équipe YATEO"]);
     expect(r.others.map((f) => f.title)).toEqual(["Dossier de Paul"]);
     expect(childFolders("SD1").map((f) => f.id)).toEqual(["s1"]);
     expect(childCount("s1")).toBe(1);
   });
   it("filtre sur un drive partagé entier, et lien vers ce drive", () => {
-    const r = driveSource.localSearch!(parseQuery('devis dossier:"Équipe Yateo"', driveSource), 20).map((i) => i.id);
+    const r = driveSource.localSearch!(parseQuery('devis dossier:"Équipe YATEO"', driveSource), 20).map((i) => i.id);
     // le dossier « Devis » et le fichier du drive partagé, pas le devis de Mon Drive
     expect(r.sort()).toEqual(["s2", "x1"]);
-    expect(folderByValue("Équipe Yateo")?.id).toBe("SD1");
-    const t = driveSource.nativeSearch(parseQuery('dossier:"Équipe Yateo"', driveSource));
+    expect(folderByValue("Équipe YATEO")?.id).toBe("SD1");
+    const t = driveSource.nativeSearch(parseQuery('dossier:"Équipe YATEO"', driveSource));
     expect(t.url).toBe("https://drive.google.com/drive/folders/SD1");
   });
   it("chemin d'un dossier de drive partagé : nom du drive en tête", () => {
-    expect(folderByValue("Équipe Yateo / Modèles / Devis")?.id).toBe("s2");
+    expect(folderByValue("Équipe YATEO / Modèles / Devis")?.id).toBe("s2");
   });
   it("rapide avec 30 000 dossiers (arborescence calculée une seule fois)", () => {
     const many: ResultItem[] = [];

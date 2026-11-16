@@ -15,7 +15,7 @@ Application Windows légère (Tauri), pour usage personnel.
 - **Toujours un bouton pour relancer la même recherche dans l'outil** (`Maj+Entrée`).
 - Aperçu détaillé du résultat sélectionné, éléments fréquents remontés en tête, thème clair ou sombre.
 - **Lecture seule garantie** : l'application ne peut faire que des lectures (requêtes GET), à deux exceptions près qui ne modifient rien : la recherche Notion et la connexion Google. C'est imposé dans la partie native, quel que soit le jeton fourni.
-- Mises à jour : chaque nouvelle version remplace la précédente (réglages, index et clés conservés). La première version de Shorteo désinstalle automatiquement l'ancienne « Yateo Search ».
+- Mises à jour : chaque nouvelle version remplace la précédente (réglages, index et clés conservés). La première version de Shorteo désinstalle automatiquement l'ancienne « YATEO Search ».
 
 ## Raccourcis
 

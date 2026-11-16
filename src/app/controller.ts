@@ -858,6 +858,17 @@ export async function syncAll(full = false): Promise<void> {
 // Démarrage
 // ---------------------------------------------------------------------------
 
+/** Démarrage avec Windows : aligné sur la case des paramètres (cochée par défaut). */
+async function syncAutostart(): Promise<void> {
+  if (platform.demo) return;
+  try {
+    const want = settings().autostart;
+    if ((await platform.autostartEnabled()) !== want) await platform.setAutostart(want);
+  } catch {
+    /* ignoré : la case reste modifiable dans les paramètres */
+  }
+}
+
 /** Enregistre auprès de Windows le raccourci général et ceux des outils. */
 export async function applyShortcuts(): Promise<Record<string, string>> {
   const st = settings();
@@ -901,6 +912,8 @@ export async function init(): Promise<void> {
   await platform.on("open-settings", () => openSettings());
   await platform.on("sync-now", () => void syncAll(false));
   await platform.onPayload<{ target: SourceId; wasOpen: boolean }>("open-source", onToolShortcut);
+
+  void syncAutostart();
 
   const status = await platform.shortcutStatus();
   ui.set({ shortcutErrors: status.errors });

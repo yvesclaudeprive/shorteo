@@ -47,6 +47,7 @@ import { driveShortcuts } from "../sources/drive";
 import type { SourceId } from "../sources/types";
 import { SourceTile, ShorteoLogo } from "./icons";
 import { MinimizeButton } from "./TopBar";
+import { APP_VERSION } from "../version";
 
 const TABS: Array<{ id: string; label: string; tile?: SourceId; icon?: typeof Database }> = [
   { id: "welcome", label: "Bienvenue", icon: Sparkles },
@@ -330,13 +331,30 @@ function ShortcutsSettings() {
 
 function General() {
   const st = useStore(settingsStore);
-  const [autostart, setAutostart] = useState(false);
-  useEffect(() => {
-    void platform.autostartEnabled().then(setAutostart).catch(() => {});
-  }, []);
   return (
     <div className="tab">
       <h2>Général</h2>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={st.autostart}
+          onChange={(e) => {
+            const on = e.target.checked;
+            updateSettings({ autostart: on });
+            void platform
+              .setAutostart(on)
+              .then(() => toast(on ? "Shorteo se lancera au démarrage de Windows" : "Shorteo ne se lancera plus au démarrage", "success", 2200))
+              .catch((err) => toast(errorText(err), "error"));
+          }}
+        />
+        <span className="check-box" aria-hidden>
+          <Check size={12} strokeWidth={3} />
+        </span>
+        <span>
+          <span className="check-label">Lancer Shorteo au démarrage de Windows</span>
+          <span className="check-hint">Discret : il attend votre raccourci, sans ouvrir de fenêtre.</span>
+        </span>
+      </label>
       <ShortcutsSettings />
       <Field label="Thème">
         <select value={st.theme} onChange={(e) => updateSettings({ theme: e.target.value as typeof st.theme })}>
@@ -347,15 +365,6 @@ function General() {
       </Field>
       <Field label="Masquer la fenêtre quand je clique ailleurs">
         <Toggle checked={st.hideOnBlur} onChange={(v) => updateSettings({ hideOnBlur: v })} />
-      </Field>
-      <Field label="Lancer au démarrage de Windows">
-        <Toggle
-          checked={autostart}
-          onChange={(v) => {
-            setAutostart(v);
-            void platform.setAutostart(v).catch((e) => toast(errorText(e), "error"));
-          }}
-        />
       </Field>
       <Field label="Fréquence de mise à jour de l'index">
         <select value={st.syncMinutes} onChange={(e) => updateSettings({ syncMinutes: Number(e.target.value) })}>
@@ -469,7 +478,7 @@ function NotionTab() {
           Cliquez sur <b>Se connecter à Notion</b> : votre navigateur s'ouvre sur Notion.
         </li>
         <li>
-          Choisissez l'espace de travail Yateo, puis <b>Autoriser l'accès</b>. Revenez ici : c'est terminé.
+          Choisissez l'espace de travail YATEO, puis <b>Autoriser l'accès</b>. Revenez ici : c'est terminé.
         </li>
       </ol>
       <div className="row-buttons">
@@ -510,7 +519,7 @@ function NotionTab() {
           <b>Créer l'intégration</b>
           <span>
             Ouvrez <Link href="https://www.notion.so/profile/integrations">notion.so/profile/integrations</Link> →{" "}
-            <b>Nouvelle intégration</b> : type <b>Interne</b>, nom « Shorteo », espace de travail Yateo.
+            <b>Nouvelle intégration</b> : type <b>Interne</b>, nom « Shorteo », espace de travail YATEO.
           </span>
         </li>
         <li>
@@ -823,7 +832,7 @@ function GoogleTab() {
           <b>Créer un projet Google Cloud</b>
           <span>
             Ouvrez <Link href="https://console.cloud.google.com/projectcreate">la page de création de projet</Link>,
-            connecté avec votre compte <b>{st.mailAccount || "@yateo.com"}</b>. Nom : « Shorteo », puis <b>Créer</b>.
+            connecté avec votre compte <b>{st.mailAccount || "YATEO"}</b>. Nom : « Shorteo », puis <b>Créer</b>.
             Vérifiez en haut de la console que ce projet est bien sélectionné.
           </span>
         </li>
@@ -940,7 +949,7 @@ function GoogleTab() {
           <b>« API non activée »</b> : le diagnostic donne le lien direct vers l'API à activer.
         </li>
         <li>
-          <b>Audience « Interne » indisponible</b> : le projet n'est pas rattaché à l'organisation yateo.com. Recréez-le
+          <b>Audience « Interne » indisponible</b> : le projet n'est pas rattaché à l'organisation YATEO. Recréez-le
           en choisissant l'organisation dans le champ « Emplacement ».
         </li>
       </ul>
@@ -1288,7 +1297,7 @@ export function SettingsView() {
           Paramètres
         </span>
         <span className="brand-mini">
-          <ShorteoLogo size={16} /> Shorteo
+          <ShorteoLogo size={16} /> Shorteo <span className="brand-version">v{APP_VERSION}</span>
         </span>
         <MinimizeButton />
       </header>
