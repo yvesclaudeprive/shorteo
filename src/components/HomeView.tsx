@@ -11,7 +11,7 @@ import { relativeDate } from "../app/format";
 import { platform } from "../app/platform";
 import { BAR_ORDER, SOURCES, sourceLabel } from "../sources/registry";
 import type { SourceId } from "../sources/types";
-import { ItemIcon, SourceTile, ShorteoLogo } from "./icons";
+import { ResultIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
 import { APP_VERSION } from "../version";
 
@@ -192,10 +192,9 @@ export function HomeView() {
                   onFocus={() => s.homeFocus !== index && ui.set({ homeFocus: index })}
                   onKeyDown={(e) => onKey(e, index)}
                 >
-                  <ItemIcon item={r} size={16} />
+                  <ResultIcon item={r} size={22} />
                   <span className="recent-title">{r.title}</span>
                   <span className="recent-src">
-                    <SourceTile id={r.source} size={14} />
                     {SOURCES[r.source].label}
                   </span>
                   <span className="recent-date">{relativeDate(r.t)}</span>

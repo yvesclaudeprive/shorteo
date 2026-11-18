@@ -25,7 +25,7 @@ import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
 import { shortcutLabel, toolLetter } from "../app/shortcuts";
-import { ItemIcon, SourceTile, kindColor } from "./icons";
+import { ResultIcon, SourceTile } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
 import { FilterBar } from "./FilterBar";
@@ -120,8 +120,8 @@ function Row({ item, selected, tokens }: { item: ResultItem; selected: boolean; 
       onMouseMove={() => setHover(itemKey(item))}
       onClick={(e) => void openItem(item, { web: e.ctrlKey })}
     >
-      <span className="row-icon" style={{ ["--kind" as string]: kindColor(item) }}>
-        <ItemIcon item={item} />
+      <span className="row-icon">
+        <ResultIcon item={item} size={30} />
       </span>
       <div className="row-main">
         <div className="row-title">
@@ -324,8 +324,8 @@ function Preview() {
     <aside className="preview preview-split">
       <div className="pv-scroll">
       <div className="pv-head">
-        <span className="pv-icon" style={{ ["--kind" as string]: kindColor(item) }}>
-          <ItemIcon item={item} size={24} />
+        <span className="pv-icon">
+          <ResultIcon item={item} size={42} />
         </span>
         <div>
           <div className="pv-title">{item.title}</div>

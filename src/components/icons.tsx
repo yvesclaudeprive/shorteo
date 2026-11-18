@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Search as SearchIcon,
   Asterisk,
   Briefcase,
   Building2,
@@ -22,6 +23,7 @@ import {
   Video,
   Globe,
 } from "lucide-react";
+import type { JSX, ReactNode } from "react";
 import type { ResultItem, SourceId } from "../sources/types";
 
 const YATEO_PATHS = (
@@ -144,4 +146,129 @@ export function ItemIcon({ item, size = 18 }: { item: ResultItem; size?: number 
   if (item.icon) return <span className="emoji" style={{ fontSize: size - 1 }}>{item.icon}</span>;
   const k = KIND_ICONS[item.kind] ?? KIND_ICONS.file;
   return <k.Icon size={size} color={k.color} strokeWidth={1.9} />;
+}
+
+// ---------------------------------------------------------------------------
+// Icône d'un résultat : le logo de l'outil où il a été trouvé (grand) + une petite
+// pastille dans le coin pour le type (Docs, Sheets, Slides, affaire, entreprise…).
+// ---------------------------------------------------------------------------
+
+/** Page de type Google (Docs, Sheets, Slides…) : coin plié + motif blanc. */
+function PageGlyph({ color, size, children }: { color: string; size: number; children?: ReactNode }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden>
+      <path d="M3.5 1h6.2L13 4.3v9.2a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 13.5v-11A1.5 1.5 0 0 1 3.5 1z" fill={color} />
+      <path d="M9.7 1 13 4.3h-2.3a1 1 0 0 1-1-1z" fill="#fff" opacity=".45" />
+      {children}
+    </svg>
+  );
+}
+
+const W = "#fff";
+const FILE_GLYPHS: Record<string, (size: number) => JSX.Element> = {
+  doc: (s) => (
+    <PageGlyph color="#4285f4" size={s}>
+      <path d="M4.6 7.2h6.8M4.6 9.4h6.8M4.6 11.6h4.4" stroke={W} strokeWidth="1.2" strokeLinecap="round" />
+    </PageGlyph>
+  ),
+  sheet: (s) => (
+    <PageGlyph color="#0f9d58" size={s}>
+      <rect x="4.4" y="6.6" width="7.2" height="5.6" rx=".6" fill="none" stroke={W} strokeWidth="1.1" />
+      <path d="M4.4 9.4h7.2M8 6.6v5.6" stroke={W} strokeWidth="1.1" />
+    </PageGlyph>
+  ),
+  slides: (s) => (
+    <PageGlyph color="#f4b400" size={s}>
+      <rect x="4.4" y="7" width="7.2" height="4.6" rx=".7" fill="none" stroke={W} strokeWidth="1.2" />
+    </PageGlyph>
+  ),
+  form: (s) => (
+    <PageGlyph color="#7248b9" size={s}>
+      <circle cx="5.2" cy="7.6" r=".8" fill={W} />
+      <circle cx="5.2" cy="10.6" r=".8" fill={W} />
+      <path d="M7.2 7.6h4.2M7.2 10.6h4.2" stroke={W} strokeWidth="1.2" strokeLinecap="round" />
+    </PageGlyph>
+  ),
+  pdf: (s) => (
+    <PageGlyph color="#ea4335" size={s}>
+      <path d="M5 11.8c1.6-1.2 2.8-3.2 3.1-5.2.1-.8-1-.9-1-.1 0 2 2.2 4.2 3.9 4.6.8.2.9-.8.1-.9-1.9-.2-4.6.5-6.1 1.6z" fill="none" stroke={W} strokeWidth="1" strokeLinejoin="round" />
+    </PageGlyph>
+  ),
+  image: (s) => (
+    <PageGlyph color="#d93f7e" size={s}>
+      <path d="M4.4 12l2.4-3 1.7 2 1.2-1.4 1.9 2.4z" fill={W} />
+      <circle cx="10.2" cy="7.2" r=".9" fill={W} />
+    </PageGlyph>
+  ),
+  video: (s) => (
+    <PageGlyph color="#e53935" size={s}>
+      <path d="M6.6 7v5l4-2.5z" fill={W} />
+    </PageGlyph>
+  ),
+  file: (s) => <PageGlyph color="#8a9099" size={s} />,
+  folder: (s) => (
+    <svg width={s} height={s} viewBox="0 0 16 16" aria-hidden>
+      <path d="M1.5 4.2A1.2 1.2 0 0 1 2.7 3h3.4l1.4 1.5h5.8a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H2.7a1.2 1.2 0 0 1-1.2-1.2z" fill="#8a9099" />
+      <path d="M1.5 6.2h13v6.1a1.2 1.2 0 0 1-1.2 1.2H2.7a1.2 1.2 0 0 1-1.2-1.2z" fill="#a6acb5" />
+    </svg>
+  ),
+};
+
+/** Pastille de type pour Pipedrive, Notion (base), actions… : pictogramme sur fond coloré. */
+const KIND_BADGES: Record<string, { Icon: typeof File; bg: string }> = {
+  deal: { Icon: Briefcase, bg: "#16a34a" },
+  person: { Icon: User, bg: "#7c4dea" },
+  organization: { Icon: Building2, bg: "#e08a00" },
+  lead: { Icon: Target, bg: "#0d9488" },
+  product: { Icon: Package, bg: "#64748b" },
+  database: { Icon: Database, bg: "#7c4dea" },
+  native: { Icon: SearchIcon, bg: "var(--tool)" },
+  switch: { Icon: ArrowRight, bg: "var(--tool)" },
+  "ask-web": { Icon: Globe, bg: "#2563eb" },
+};
+
+function Badge({ item, size }: { item: ResultItem; size: number }) {
+  // lignes d'action (rechercher dans l'outil, voir tout…) : pictogramme de l'action
+  const action = item.kind === "native" || item.kind === "switch" || item.kind === "ask-web" ? KIND_BADGES[item.kind] : null;
+  if (action) {
+    return (
+      <span className="rbadge" style={{ width: size, height: size, background: action.bg }}>
+        <action.Icon size={size * 0.62} strokeWidth={2.6} color="#fff" />
+      </span>
+    );
+  }
+  // Notion : l'emoji de la page
+  if (item.icon) {
+    return (
+      <span className="rbadge rbadge-emoji" style={{ width: size, height: size, fontSize: size * 0.78 }}>
+        {item.icon}
+      </span>
+    );
+  }
+  if (item.source === "drive") {
+    const g = FILE_GLYPHS[item.kind] ?? FILE_GLYPHS.file;
+    return <span className="rbadge rbadge-file">{g(size)}</span>;
+  }
+  const b = KIND_BADGES[item.kind];
+  if (!b) return null;
+  return (
+    <span className="rbadge" style={{ width: size, height: size, background: b.bg }}>
+      <b.Icon size={size * 0.62} strokeWidth={2.6} color="#fff" />
+    </span>
+  );
+}
+
+/** Icône d'un résultat : logo de l'outil + type dans le coin. */
+export function ResultIcon({ item, size = 30 }: { item: ResultItem; size?: number }) {
+  return (
+    <span className="ricon" style={{ width: size, height: size }}>
+      <SourceTile id={item.source} size={size} />
+      <Badge item={item} size={Math.round(size * 0.52)} />
+    </span>
+  );
+}
+
+/** Pictogramme d'un fichier Drive (Docs, Sheets, Slides, dossier…). */
+export function FileGlyph({ kind, size = 16 }: { kind: string; size?: number }) {
+  return (FILE_GLYPHS[kind] ?? FILE_GLYPHS.file)(size);
 }

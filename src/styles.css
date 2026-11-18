@@ -2923,3 +2923,59 @@ input.sc-input.bad {
   box-shadow: 0 1px 4px color-mix(in srgb, var(--src, var(--accent)) 40%, transparent);
   animation: rise 0.1s var(--ease);
 }
+
+/* --- Icône d'un résultat : logo de l'outil + type dans le coin --- */
+.ricon {
+  --ring: #1e2129;
+  position: relative;
+  display: inline-block;
+  flex: none;
+}
+
+:root[data-theme="light"] .ricon {
+  --ring: #ffffff;
+}
+
+.ricon > .tile {
+  display: grid;
+}
+
+.rbadge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  border-radius: 30%;
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.rbadge-file {
+  background: var(--ring);
+  border-radius: 4px;
+}
+
+.rbadge-file svg {
+  display: block;
+}
+
+.rbadge-emoji {
+  line-height: 1;
+  background: var(--ring);
+  border-radius: 6px;
+}
+
+/* les pastilles d'icône n'ont plus de fond teinté : le logo suffit */
+.row-icon {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+.pv-icon {
+  background: none !important;
+  box-shadow: none !important;
+}
+
+.fav-icon.fav-glyph {
+  background: none;
+}
