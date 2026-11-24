@@ -22,7 +22,8 @@ import {
 } from "lucide-react";
 import { useStore } from "../app/store";
 import { settingsStore, updateSettings, saveSettingsNow, type OpenMode } from "../app/settings";
-import { applyShortcuts, closeSettings, errorText, syncAll, toast, ui } from "../app/controller";
+import { applyShortcuts, checkForUpdate, closeSettings, errorText, installUpdate, syncAll, toast, ui } from "../app/controller";
+import { updateNotes } from "./UpdateBanner";
 import {
   checkShortcut,
   DEFAULT_SHORTCUT,
@@ -331,6 +332,63 @@ function ShortcutsSettings() {
   );
 }
 
+/** Version installée, vérification manuelle et case « vérifier automatiquement ». */
+function UpdatesSettings() {
+  const st = useStore(settingsStore);
+  const { update, updateState, updateError } = useStore(ui);
+  const status =
+    updateState === "checking"
+      ? "Vérification…"
+      : updateState === "downloading"
+        ? "Téléchargement de la nouvelle version… Shorteo va redémarrer."
+        : update
+          ? `Version ${update.latest} disponible.`
+          : updateState === "uptodate"
+            ? "Vous avez la dernière version."
+            : updateState === "error"
+              ? updateError ?? "Vérification impossible."
+              : "";
+  return (
+    <div className="updates">
+      <div className="upd-row">
+        <div>
+          <div className="field-label">
+            Version installée : {APP_VERSION}
+          </div>
+          {status && <div className={`field-hint ${updateState === "error" ? "bad" : ""}`}>{status}</div>}
+        </div>
+        <span className="grow" />
+        {update ? (
+          <button className="btn small primary" disabled={updateState === "downloading"} onClick={() => void installUpdate()}>
+            Mettre à jour vers {update.latest}
+          </button>
+        ) : (
+          <button className="btn small" disabled={updateState === "checking"} onClick={() => void checkForUpdate(true)}>
+            <RefreshCw size={13} /> Vérifier maintenant
+          </button>
+        )}
+      </div>
+      {update && updateNotes(update.notes).length > 0 && (
+        <ul className="upd-notes">
+          {updateNotes(update.notes, 8).map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
+      )}
+      <label className="check-row compact">
+        <input type="checkbox" checked={st.autoUpdate} onChange={(e) => updateSettings({ autoUpdate: e.target.checked })} />
+        <span className="check-box" aria-hidden>
+          <Check size={12} strokeWidth={3} />
+        </span>
+        <span>
+          <span className="check-label">Vérifier automatiquement les nouvelles versions</span>
+          <span className="check-hint">Au lancement puis toutes les 6 heures : un bandeau propose la mise à jour, en un clic.</span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function General() {
   const st = useStore(settingsStore);
   return (
@@ -357,6 +415,7 @@ function General() {
           <span className="check-hint">Discret : il attend votre raccourci, sans ouvrir de fenêtre.</span>
         </span>
       </label>
+      <UpdatesSettings />
       <ShortcutsSettings />
       <Field label="Thème">
         <select value={st.theme} onChange={(e) => updateSettings({ theme: e.target.value as typeof st.theme })}>

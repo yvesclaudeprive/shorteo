@@ -22,6 +22,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Nouveautés = messages des modifications depuis la version précédente
+      # (affichés dans Shorteo, dans le bandeau « nouvelle version disponible »)
+      - name: Notes de version
+        id: notes
+        shell: bash
+        run: |
+          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          range=${prev:+$prev..HEAD}
+          {
+            echo "body<<NOTES_EOF"
+            echo "### Nouveautés"
+            git log --no-merges --pretty='- %s' $range | grep -v '^- Shorteo v' | head -40
+            echo
+            echo "Dans Shorteo : cliquez sur **Mettre à jour** dans le bandeau. Sinon, téléchargez **Shorteo_…_x64-setup.exe** ci-dessous et lancez-le."
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +61,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "Shorteo v__VERSION__"
-          releaseBody: "Téléchargez le fichier **Shorteo_…_x64-setup.exe** ci-dessous, puis lancez-le."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false

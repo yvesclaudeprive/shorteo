@@ -14,6 +14,7 @@ import type { SourceId } from "../sources/types";
 import { ResultIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
 import { KeysStrip } from "./KeysStrip";
+import { UpdateBanner } from "./UpdateBanner";
 import { APP_VERSION } from "../version";
 
 const UNITS: Partial<Record<SourceId, string>> = {
@@ -170,6 +171,7 @@ export function HomeView() {
         </div>
         <TopActions />
       </header>
+      <UpdateBanner />
 
       <div className="home-body">
         {bar("all", 0, true)}

@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { createStore } from "./store";
-import { platform } from "./platform";
+import { platform, type UpdateInfo } from "./platform";
 import { loadSettings, settings, settingsStore, shortcutsMigrated, updateSettings } from "./settings";
 import { sourceFromKey } from "./shortcuts";
 import { getIndex, loadIndex } from "./index-store";
@@ -55,6 +55,11 @@ export interface UIState {
   apps: Record<string, { running: boolean; installed: boolean }>;
   /** Raccourcis globaux refusés par Windows (cible → raison) */
   shortcutErrors: Record<string, string>;
+  /** Nouvelle version disponible (bandeau « Mettre à jour ») */
+  update: UpdateInfo | null;
+  /** Mise à jour : vérification, téléchargement en cours… */
+  updateState: "idle" | "checking" | "downloading" | "uptodate" | "error";
+  updateError: string | null;
 }
 
 const NO_COMP = { items: [], ghost: "", start: 0, end: 0, index: 0, open: false, touched: false };
@@ -78,6 +83,9 @@ export const ui = createStore<UIState>({
   hiddenAt: 0,
   apps: {},
   shortcutErrors: {},
+  update: null,
+  updateState: "idle",
+  updateError: null,
 });
 
 export const itemKey = (it: ResultItem) => `${it.source}:${it.id}`;
@@ -860,6 +868,44 @@ export async function syncAll(full = false): Promise<void> {
 // Démarrage
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Mises à jour
+// ---------------------------------------------------------------------------
+
+/** Vérifie s'il existe une version plus récente ; « manuel » = bouton des paramètres. */
+export async function checkForUpdate(manual = false): Promise<void> {
+  if (!manual && !settings().autoUpdate) return;
+  ui.set({ updateState: "checking", updateError: null });
+  try {
+    const info = await platform.updateCheck();
+    const snooze = settings().updateSnooze;
+    const snoozed = !manual && !!snooze && snooze.version === info?.latest && Date.now() < snooze.until;
+    ui.set({ update: info?.newer && !snoozed ? info : null, updateState: info && !info.newer ? "uptodate" : "idle" });
+    if (manual && info && !info.newer) toast(`Shorteo est à jour (version ${info.current})`, "success", 2500);
+  } catch (e) {
+    ui.set({ updateState: "error", updateError: errorText(e) });
+    if (manual) toast(errorText(e), "error", 6000);
+  }
+}
+
+/** Télécharge et installe la nouvelle version : Shorteo se ferme puis redémarre tout seul. */
+export async function installUpdate(): Promise<void> {
+  ui.set({ updateState: "downloading", updateError: null });
+  try {
+    await platform.updateInstall();
+  } catch (e) {
+    ui.set({ updateState: "error", updateError: errorText(e) });
+    toast(errorText(e), "error", 8000);
+  }
+}
+
+/** « Plus tard » : ne plus proposer cette version pendant 3 jours. */
+export function snoozeUpdate(): void {
+  const u = ui.get().update;
+  if (u) updateSettings({ updateSnooze: { version: u.latest, until: Date.now() + 3 * 86400000 } });
+  ui.set({ update: null });
+}
+
 /** Démarrage avec Windows : aligné sur la case des paramètres (cochée par défaut). */
 async function syncAutostart(): Promise<void> {
   if (platform.demo) return;
@@ -922,6 +968,9 @@ export async function init(): Promise<void> {
   await platform.onPayload<{ target: SourceId; wasOpen: boolean }>("open-source", onToolShortcut);
 
   void syncAutostart();
+  // nouvelle version ? au lancement (après la première synchronisation), puis toutes les 6 h
+  window.setTimeout(() => void checkForUpdate(), 8000);
+  window.setInterval(() => void checkForUpdate(), 6 * 3600000);
   if (shortcutsMigrated) await applyShortcuts().catch(() => {});
 
   const status = await platform.shortcutStatus();

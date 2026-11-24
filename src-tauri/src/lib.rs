@@ -887,6 +887,147 @@ fn native_log_clear(state: State<AppState>) {
 }
 
 // ---------------------------------------------------------------------------
+// Mises à jour : dernière version publiée sur GitHub (page officielle du projet)
+// ---------------------------------------------------------------------------
+
+const RELEASES_API: &str = "https://api.github.com/repos/yvesclaudeprive/shorteo/releases/latest";
+const RELEASES_PAGE: &str = "https://github.com/yvesclaudeprive/shorteo/releases/";
+/// Seuls les installateurs publiés sur la page du projet peuvent être téléchargés.
+const DOWNLOAD_PREFIX: &str = "https://github.com/yvesclaudeprive/shorteo/releases/download/";
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct UpdateInfo {
+    pub current: String,
+    pub latest: String,
+    pub newer: bool,
+    pub page: String,
+    pub notes: String,
+    pub asset: Option<String>,
+}
+
+/// « v0.3.10 » → (0, 3, 10) ; comparaison numérique (0.3.10 > 0.3.9).
+pub fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = v.trim().trim_start_matches('v').split('.').map(|x| {
+        x.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<u64>().ok()
+    });
+    let major = parts.next()??;
+    let minor = parts.next()??;
+    let patch = parts.next().flatten().unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// Lit la réponse de GitHub (dernière version publiée).
+pub fn update_from_release(current: &str, release: &serde_json::Value) -> Option<UpdateInfo> {
+    let latest = release.get("tag_name")?.as_str()?.trim_start_matches('v').to_string();
+    let asset = release
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|a| {
+            let name = a.get("name")?.as_str()?;
+            let url = a.get("browser_download_url")?.as_str()?;
+            (name.ends_with("_x64-setup.exe") && url.starts_with(DOWNLOAD_PREFIX)).then(|| url.to_string())
+        })
+        .next();
+    let newer = match (parse_version(&latest), parse_version(current)) {
+        (Some(l), Some(c)) => l > c,
+        _ => false,
+    };
+    let page = release
+        .get("html_url")
+        .and_then(|x| x.as_str())
+        .filter(|u| u.starts_with(RELEASES_PAGE))
+        .unwrap_or(RELEASES_PAGE)
+        .to_string();
+    let notes: String = release
+        .get("body")
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .chars()
+        .take(2000)
+        .collect();
+    Some(UpdateInfo { current: current.to_string(), latest, newer, page, notes, asset })
+}
+
+async fn fetch_update(app: &AppHandle) -> Result<UpdateInfo, String> {
+    let state = app.state::<AppState>();
+    let current = app.package_info().version.to_string();
+    let r = state
+        .http
+        .get(RELEASES_API)
+        .header("Accept", "application/vnd.github+json")
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| format!("Vérification impossible (connexion) : {e}"))?;
+    if !r.status().is_success() {
+        return Err(format!("Vérification impossible (GitHub {})", r.status().as_u16()));
+    }
+    let text = r.text().await.map_err(|e| e.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    update_from_release(&current, &json).ok_or_else(|| "Réponse de GitHub illisible".to_string())
+}
+
+#[tauri::command]
+async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
+    fetch_update(&app).await
+}
+
+/// Télécharge l'installateur officiel de la dernière version, le lance en mode
+/// « passif » (barre de progression seule, puis Shorteo redémarre) et quitte Shorteo.
+#[tauri::command]
+async fn update_install(app: AppHandle) -> Result<(), String> {
+    let info = fetch_update(&app).await?;
+    if !info.newer {
+        return Err("Vous avez déjà la dernière version.".into());
+    }
+    let url = info.asset.clone().ok_or("Installateur introuvable sur la page des versions")?;
+    if !url.starts_with(DOWNLOAD_PREFIX) {
+        return Err("Adresse de téléchargement refusée".into());
+    }
+    let state = app.state::<AppState>();
+    let r = state
+        .http
+        .get(&url)
+        .timeout(Duration::from_secs(300))
+        .send()
+        .await
+        .map_err(|e| format!("Téléchargement impossible : {e}"))?;
+    if !r.status().is_success() {
+        return Err(format!("Téléchargement impossible (HTTP {})", r.status().as_u16()));
+    }
+    let bytes = r.bytes().await.map_err(|e| format!("Téléchargement interrompu : {e}"))?;
+    if bytes.len() < 200_000 || bytes.len() > 300_000_000 || !bytes.starts_with(b"MZ") {
+        return Err("Le fichier téléchargé n'est pas un installateur Windows valide".into());
+    }
+    let dir = std::env::temp_dir().join("Shorteo-mise-a-jour");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("Shorteo_{}_x64-setup.exe", info.latest));
+    fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        // /P : sans questions (barre de progression) ; /R : relance Shorteo ensuite ;
+        // /NS : ne recrée pas de raccourci sur le bureau
+        std::process::Command::new(&path)
+            .args(["/P", "/R", "/NS"])
+            .spawn()
+            .map_err(|e| format!("Lancement de l'installateur impossible : {e}"))?;
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(400));
+            handle.exit(0);
+        });
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err("Mise à jour automatique disponible sous Windows uniquement".into())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Raccourci global
 // ---------------------------------------------------------------------------
 
@@ -1628,6 +1769,8 @@ pub fn run() {
             native_search,
             native_log,
             native_log_clear,
+            update_check,
+            update_install,
             import_ai_history
         ])
         .run(tauri::generate_context!())
@@ -1666,6 +1809,34 @@ mod tests {
         // Drive : liste des drives partagés et racine de « Mon Drive » en lecture
         assert!(method_allowed(&get, "https://www.googleapis.com/drive/v3/drives?pageSize=100", None));
         assert!(!method_allowed(&post, "https://www.googleapis.com/drive/v3/drives", Some("{}")));
+    }
+
+    #[test]
+    fn mise_a_jour_detectee() {
+        let release = serde_json::json!({
+            "tag_name": "v0.3.16",
+            "html_url": "https://github.com/yvesclaudeprive/shorteo/releases/tag/v0.3.16",
+            "body": "### Nouveautés\n- Mise à jour automatique",
+            "assets": [
+                { "name": "autre.zip", "browser_download_url": "https://example.com/autre.zip" },
+                { "name": "Shorteo_0.3.16_x64-setup.exe",
+                  "browser_download_url": "https://github.com/yvesclaudeprive/shorteo/releases/download/v0.3.16/Shorteo_0.3.16_x64-setup.exe" }
+            ]
+        });
+        let u = update_from_release("0.3.15", &release).unwrap();
+        assert!(u.newer);
+        assert_eq!(u.latest, "0.3.16");
+        assert!(u.asset.unwrap().ends_with("Shorteo_0.3.16_x64-setup.exe"));
+        // même version, ou version plus ancienne : rien à proposer
+        assert!(!update_from_release("0.3.16", &release).unwrap().newer);
+        assert!(!update_from_release("0.4.0", &release).unwrap().newer);
+        // 0.3.10 est plus récent que 0.3.9 (comparaison numérique)
+        assert!(parse_version("0.3.10") > parse_version("0.3.9"));
+        // installateur hébergé ailleurs que sur la page du projet : refusé
+        let piege = serde_json::json!({ "tag_name": "v9.0.0", "assets": [
+            { "name": "Shorteo_9.0.0_x64-setup.exe", "browser_download_url": "https://exemple.com/Shorteo_9.0.0_x64-setup.exe" }
+        ]});
+        assert!(update_from_release("0.3.15", &piege).unwrap().asset.is_none());
     }
 
     #[test]

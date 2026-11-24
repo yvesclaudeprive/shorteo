@@ -45,6 +45,15 @@ function ls(): Storage | null {
   }
 }
 
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  page: string;
+  notes: string;
+  asset: string | null;
+}
+
 export const platform = {
   demo: !isTauri,
 
@@ -139,6 +148,31 @@ export const platform = {
   async nativeSearch(recipe: Recipe): Promise<"typed" | "not_installed" | "not_foreground"> {
     if (!isTauri) return "not_installed";
     return invoke("native_search", { recipe });
+  },
+
+  /** Dernière version publiée de Shorteo (page GitHub du projet). */
+  async updateCheck(): Promise<UpdateInfo | null> {
+    if (!isTauri) {
+      // démo : ?update=1 simule une nouvelle version
+      if (typeof location !== "undefined" && location.search.includes("update")) {
+        return {
+          current: "0.3.15",
+          latest: "0.3.16",
+          newer: true,
+          page: "https://github.com/yvesclaudeprive/shorteo/releases",
+          notes: "### Nouveautés\n- Mise à jour automatique depuis Shorteo\n- Exemple de nouveauté",
+          asset: "https://github.com/yvesclaudeprive/shorteo/releases/download/v0.3.16/Shorteo_0.3.16_x64-setup.exe",
+        };
+      }
+      return null;
+    }
+    return invoke("update_check");
+  },
+
+  /** Télécharge et lance l'installateur de la dernière version (Shorteo se ferme puis redémarre). */
+  async updateInstall(): Promise<void> {
+    if (!isTauri) throw new Error("Disponible dans l'application Windows");
+    await invoke("update_install");
   },
 
   /** Journal des recherches lancées dans les applications (diagnostic). */

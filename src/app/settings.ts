@@ -17,6 +17,10 @@ export interface Settings {
   hideOnBlur: boolean;
   /** Lancer Shorteo au démarrage de Windows (coché par défaut) */
   autostart: boolean;
+  /** Vérifier les nouvelles versions et proposer la mise à jour (coché par défaut) */
+  autoUpdate: boolean;
+  /** « Plus tard » : version à ne plus proposer avant la date indiquée */
+  updateSnooze: { version: string; until: number } | null;
   theme: Theme;
   syncMinutes: number;
   lastSource: string;
@@ -58,6 +62,8 @@ export const DEFAULT_SETTINGS: Settings = {
   toolShortcuts: { ...DEFAULT_TOOL_SHORTCUTS },
   hideOnBlur: true,
   autostart: true,
+  autoUpdate: true,
+  updateSnooze: null,
   theme: "auto",
   syncMinutes: 2,
   lastSource: "all",

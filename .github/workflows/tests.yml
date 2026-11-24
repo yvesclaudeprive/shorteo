@@ -66,3 +66,27 @@ jobs:
             exit 1
           }
           Write-Output "::notice title=Test clavier Windows::Bloc-notes : premier plan, Échap, frappe de /, collage et saisie d'un mot vérifiés"
+
+      # La mise à jour depuis Shorteo lance l'installateur en mode passif (/P /NS) :
+      # on vérifie sur un vrai Windows que la dernière version publiée s'installe ainsi,
+      # sans question ni fenêtre bloquante.
+      - name: Installation passive (comme la mise à jour automatique)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "shorteo-ci" }
+          $rel = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/${{ github.repository }}/releases/latest"
+          $asset = $rel.assets | Where-Object { $_.name -like "*_x64-setup.exe" } | Select-Object -First 1
+          if (-not $asset) { Write-Output "::error title=Installation passive::installateur introuvable"; exit 1 }
+          Invoke-WebRequest -Headers @{ "User-Agent" = "shorteo-ci" } $asset.browser_download_url -OutFile setup.exe
+          $t0 = Get-Date
+          $p = Start-Process -FilePath .\setup.exe -ArgumentList "/P","/NS" -PassThru
+          if (-not $p.WaitForExit(240000)) { $p.Kill(); Write-Output "::error title=Installation passive::l'installateur ne s'est pas terminé (bloqué ?)"; exit 1 }
+          $dir = Join-Path $env:LOCALAPPDATA "Shorteo"
+          Get-ChildItem $dir | Format-Table Name, Length
+          $exe = Get-ChildItem $dir -Filter *.exe | Where-Object { $_.Name -notlike "uninstall*" } | Select-Object -First 1
+          $ver = (Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Shorteo" -ErrorAction SilentlyContinue).DisplayVersion
+          if (-not $exe -or -not $ver) { Write-Output "::error title=Installation passive::Shorteo n'est pas installé (code $($p.ExitCode))"; exit 1 }
+          Write-Output "::notice title=Installation passive::$($rel.tag_name) installée sans question en $([int]((Get-Date) - $t0).TotalSeconds) s : $($exe.Name), version $ver"
+

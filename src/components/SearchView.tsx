@@ -26,6 +26,7 @@ import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry"
 import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
 import { shortcutLabel, sourceFromKey, toolLetter } from "../app/shortcuts";
 import { KeysStrip } from "./KeysStrip";
+import { UpdateBanner } from "./UpdateBanner";
 import { ResultIcon, SourceTile } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
@@ -446,6 +447,7 @@ export function SearchView() {
         <SourcePills />
         <TopActions />
       </header>
+      <UpdateBanner />
       <SearchBar />
       {ui.get().source === "drive" && <DriveShortcuts />}
       <FilterBar />
