@@ -8,7 +8,7 @@ import { driveSource, childFolders, childCount, folderByValue, folderRoots } fro
 import { notionSource } from "../src/sources/notion";
 import { pipedriveSource } from "../src/sources/pipedrive";
 import { claudeSource, chatgptSource } from "../src/sources/ai";
-import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection, emptyHint } from "../src/app/controller";
+import { ui, runNative, setHover, previewItem, itemKey, openSelected, moveSelection, emptyHint, onShown, setSource } from "../src/app/controller";
 import { parseFavorites } from "../src/sources/notion-mcp";
 import {
   checkShortcut,
@@ -499,5 +499,29 @@ describe("Dans Shorteo : Alt + lettre change d'onglet", () => {
   it("AltGr (Ctrl+Alt) sert à taper un caractère : aucun changement d'onglet", () => {
     expect(sourceFromKey(ev({ altKey: true, ctrlKey: true, key: "@", code: "Digit0" }), BAR_ORDER, ts)).toBeNull();
     expect(sourceFromKey(ev({ key: "p", code: "KeyP" }), BAR_ORDER, ts)).toBeNull();
+  });
+});
+
+describe("Changer d'onglet garde la recherche", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(platform, "appsStatus").mockResolvedValue({ running: {}, installed: {} });
+    settingsStore.set({ ...DEFAULT_SETTINGS, connected: { notion: true, notionMcp: false, pipedrive: true, google: true } });
+  });
+  it("clic sur un onglet ou Alt + lettre : le texte reste, les filtres inconnus de l'outil partent", () => {
+    ui.set({ mode: "search", source: "drive", query: "maison type:sheet " });
+    setSource("pipedrive");
+    expect(ui.get().query.trim()).toBe("maison");
+    setSource("notion");
+    expect(ui.get().query.trim()).toBe("maison");
+  });
+  it("raccourci d'outil pressé alors que Shorteo est déjà ouvert depuis longtemps : la recherche n'est pas vidée", () => {
+    ui.set({ mode: "search", source: "drive", query: "maison", hiddenAt: Date.now() - 600000 });
+    onShown(); // ouverture après une longue absence : retour à l'accueil (normal)
+    expect(ui.get().mode).toBe("home");
+    ui.set({ mode: "search", source: "drive", query: "maison" });
+    onShown(); // fenêtre déjà ouverte (pas masquée entre-temps) : on garde tout
+    expect(ui.get().query).toBe("maison");
+    expect(ui.get().mode).toBe("search");
   });
 });

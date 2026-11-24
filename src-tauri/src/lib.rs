@@ -948,7 +948,10 @@ fn on_shortcut(app: &AppHandle, pressed: &Shortcut) {
         Some(tool) => {
             if let Some(w) = main_window(app) {
                 let was_open = w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false);
-                show_window(app);
+                // déjà ouverte : on bascule seulement d'onglet (la recherche en cours est gardée)
+                if !was_open {
+                    show_window(app);
+                }
                 let _ = w.emit("open-source", serde_json::json!({ "target": tool, "wasOpen": was_open }));
             }
         }

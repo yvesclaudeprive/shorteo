@@ -890,9 +890,15 @@ function onToolShortcut(p: { target: SourceId; wasOpen: boolean }): void {
   setSource(p.target);
 }
 
-function onShown(): void {
+let lastShown = 0;
+
+/** Fenêtre affichée (raccourci, icône…). Exportée pour les tests. */
+export function onShown(): void {
   const s = ui.get();
-  if (s.mode !== "settings" && Date.now() - s.hiddenAt > 90000) goHome();
+  // la fenêtre était-elle masquée depuis le dernier affichage ? (sinon : rien à réinitialiser)
+  const wasHidden = s.hiddenAt >= lastShown;
+  lastShown = Date.now();
+  if (wasHidden && s.mode !== "settings" && Date.now() - s.hiddenAt > 90000) goHome();
   else if (s.mode === "search") runSearch();
   focusInput();
   void refreshApps();

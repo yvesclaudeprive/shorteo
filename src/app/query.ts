@@ -223,7 +223,11 @@ export function carryQuery(input: string, target: SourceDef | null): string {
   return lex(input)
     .filter((lx) => {
       const sp = splitOp(lx.raw);
-      return !sp || !!findOperator(target, sp.key);
+      if (!sp) return true;
+      const op = findOperator(target, sp.key);
+      if (!op) return false;
+      // même nom de filtre mais valeur inconnue de l'outil (type:sheet vers Pipedrive) : retiré
+      return !op.strict || !sp.value || !!findValue(op, sp.value);
     })
     .map((l) => l.raw)
     .join(" ");

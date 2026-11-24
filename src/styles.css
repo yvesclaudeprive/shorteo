@@ -2087,7 +2087,7 @@ a:hover {
 
 .toast {
   position: absolute;
-  bottom: 48px;
+  bottom: 74px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
@@ -2978,4 +2978,69 @@ input.sc-input.bad {
 
 .fav-icon.fav-glyph {
   background: none;
+}
+
+/* --- Pense-bête des raccourcis, en bas de la fenêtre --- */
+.keys-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 26px;
+  padding: 0 16px;
+  border-top: 1px solid var(--stroke);
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ks-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ks-title {
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9.5px;
+  margin-right: 2px;
+}
+
+.ks-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 3px;
+}
+
+.ks-item.on {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ks-item.on kbd {
+  color: var(--on-accent);
+  background: var(--tool);
+  border-color: transparent;
+}
+
+.keys-strip kbd {
+  font-size: 9.5px;
+  padding: 1px 4px;
+  min-width: 14px;
+  text-align: center;
+}
+
+.ks-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--stroke-strong);
+}
+
+.ks-dot {
+  margin: 0 2px;
 }

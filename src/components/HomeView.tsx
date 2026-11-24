@@ -13,6 +13,7 @@ import { BAR_ORDER, SOURCES, sourceLabel } from "../sources/registry";
 import type { SourceId } from "../sources/types";
 import { ResultIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
+import { KeysStrip } from "./KeysStrip";
 import { APP_VERSION } from "../version";
 
 const UNITS: Partial<Record<SourceId, string>> = {
@@ -211,9 +212,6 @@ export function HomeView() {
           <kbd>↓</kbd> Naviguer
         </span>
         <span>
-          <kbd>Alt+lettre</kbd> Choisir un outil
-        </span>
-        <span>
           <kbd>↵</kbd> Ouvrir
         </span>
         <span>
@@ -224,6 +222,7 @@ export function HomeView() {
           <kbd>Échap</kbd> Fermer
         </span>
       </footer>
+      <KeysStrip />
     </div>
   );
 }

@@ -24,7 +24,8 @@ import { parseQuery } from "../app/query";
 import { highlight } from "../app/search";
 import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry";
 import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
-import { shortcutLabel, toolLetter } from "../app/shortcuts";
+import { shortcutLabel, sourceFromKey, toolLetter } from "../app/shortcuts";
+import { KeysStrip } from "./KeysStrip";
 import { ResultIcon, SourceTile } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
 import { SearchBar } from "./SearchBar";
@@ -412,9 +413,6 @@ function Footer() {
       <span>
         <kbd>Tab</kbd> Compléter
       </span>
-      <span>
-        <kbd>Alt+lettre</kbd> Outil
-      </span>
       <span className="grow" />
       <span className="status">
         {s.liveLoading ? "Recherche en direct…" : s.liveMs !== null && s.query ? `En direct · ${s.liveMs} ms` : `${items.filter((i) => !i.action).length} résultats`}
@@ -423,7 +421,25 @@ function Footer() {
   );
 }
 
+/** Alt + lettre change d'onglet même quand le curseur n'est pas dans la barre de recherche. */
+function useToolKeys(): void {
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented || ui.get().mode !== "search") return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest(".fmenu") || el?.classList.contains("search-input")) return;
+      const target = sourceFromKey(e, BAR_ORDER, settingsStore.get().toolShortcuts);
+      if (!target) return;
+      e.preventDefault();
+      setSource(target);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 export function SearchView() {
+  useToolKeys();
   return (
     <div className="view search-view">
       <header className="top" onMouseDown={dragHandle}>
@@ -438,6 +454,7 @@ export function SearchView() {
         <Preview />
       </div>
       <Footer />
+      <KeysStrip />
     </div>
   );
 }
