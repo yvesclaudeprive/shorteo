@@ -32,15 +32,31 @@ export const OLD_TOOL_SHORTCUTS: Record<SourceKey, string> = {
   claude: "Ctrl+Alt+Shift+C",
 };
 
-/** Dans Shorteo, Alt + cette lettre bascule sur l'onglet (« T » = Partout / Tout). */
-export const ALL_LETTER = "T";
+/**
+ * Dans Shorteo, Alt + cette lettre bascule sur l'onglet : l'initiale du nom.
+ * (Partout dans Windows, Mails et Claude restent Ctrl+Alt+S et Ctrl+Alt+L : Ctrl+Alt+M
+ * et Ctrl+Alt+C servent déjà dans Google Docs.)
+ */
+export const APP_LETTERS: Record<SourceId, string> = {
+  all: "T",
+  notion: "N",
+  drive: "D",
+  pipedrive: "P",
+  mail: "M",
+  chatgpt: "G",
+  claude: "C",
+};
 
-/** Lettre d'un outil dans Shorteo : celle de son raccourci global (Ctrl+Alt+P → P). */
-export function toolLetter(id: SourceId, toolShortcuts: Partial<Record<SourceKey, string>>): string {
-  if (id === "all") return ALL_LETTER;
-  const key = split(toolShortcuts[id] ?? "").key;
-  if (/^[A-Z]$/i.test(key)) return key.toUpperCase();
-  return split(DEFAULT_TOOL_SHORTCUTS[id]).key;
+/** Lettre d'un onglet dans Shorteo (Alt + lettre). */
+export function toolLetter(id: SourceId, _toolShortcuts?: Partial<Record<SourceKey, string>>): string {
+  return APP_LETTERS[id];
+}
+
+/** Lettre du raccourci global d'un outil (Ctrl+Alt+S → S), ou "" si autre forme. */
+export function globalLetter(accel: string): string {
+  const { mods, key } = split(accel);
+  const ok = mods.length === 2 && mods.includes("Ctrl") && mods.includes("Alt") && /^[A-Z]$/i.test(key);
+  return ok ? key.toUpperCase() : "";
 }
 
 /**

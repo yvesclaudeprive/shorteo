@@ -3161,3 +3161,62 @@ input.sc-input.bad {
   background: none;
   box-shadow: none;
 }
+
+/* lettre du raccourci (Alt + lettre) soulignée dans le nom des onglets */
+u.acc-key {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+
+/* « Alt + » bien visible dans le pense-bête */
+.keys-strip kbd.ks-alt {
+  color: #fff;
+  font-weight: 700;
+  background: var(--yateo-red);
+  border-color: var(--yateo-red);
+  box-shadow: none;
+}
+
+.ks-plus {
+  color: var(--yateo-red);
+  font-weight: 800;
+}
+
+.ks-except {
+  margin-left: 4px;
+}
+
+.ks-group {
+  flex: none;
+}
+
+.ks-group.ks-windows {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.keys-strip kbd {
+  flex: none;
+}
+
+.ks-item {
+  flex: none;
+  margin-left: 6px;
+}
+
+.ks-item u.acc-key {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.ks-item.on {
+  color: var(--text);
+}
+
+.ks-item.on .letter-label {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--tool) 22%, transparent);
+}

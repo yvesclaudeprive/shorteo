@@ -14,6 +14,7 @@ import type { SourceId } from "../sources/types";
 import { ResultIcon, SourceTile, ShorteoLogo } from "./icons";
 import { TopActions } from "./TopBar";
 import { KeysStrip } from "./KeysStrip";
+import { LetterLabel } from "./LetterLabel";
 import { UpdateBanner } from "./UpdateBanner";
 import { APP_VERSION } from "../version";
 
@@ -122,7 +123,9 @@ export function HomeView() {
         onMouseDown={() => ui.set({ homeFocus: index })}
       >
         <SourceTile id={id} size={big ? 26 : 22} />
-        <span className="bar-label">{sourceLabel(id)}</span>
+        <span className="bar-label">
+          <LetterLabel label={sourceLabel(id)} letter={toolLetter(id)} />
+        </span>
         <input
           ref={(el) => {
             refs.current[index] = el;

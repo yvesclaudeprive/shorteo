@@ -21,7 +21,7 @@ export const BAR_ORDER: SourceId[] = ["all", "notion", "drive", "pipedrive", "ma
 export const ALL_ORDER: SourceKey[] = ["pipedrive", "notion", "drive", "mail", "claude", "chatgpt"];
 
 export function sourceLabel(id: SourceId): string {
-  return id === "all" ? "Partout" : SOURCES[id].label;
+  return id === "all" ? "Tout" : SOURCES[id].label;
 }
 
 export function sourceDef(id: SourceId): SourceDef | null {

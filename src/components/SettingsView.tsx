@@ -286,8 +286,8 @@ function ShortcutsSettings() {
         Fonctionnent partout dans Windows. Cliquez sur un raccourci puis appuyez sur la nouvelle combinaison. Par défaut :
         Ctrl+Alt + une lettre, libre sous Windows et dans Google Docs. Pressé une 2ᵉ fois, le raccourci referme Shorteo.
         <br />
-        <b>Dans Shorteo</b>, Alt + la même lettre bascule d'onglet (Alt+P → Pipedrive, Alt+T → Partout) : maintenez Alt pour
-        voir les lettres sur les onglets.
+        <b>Dans Shorteo</b>, Alt + la lettre soulignée bascule d'onglet : Alt+T Tout, Alt+N Notion, Alt+D Drive, Alt+P Pipedrive,
+        Alt+M Mails, Alt+G ChatGPT, Alt+C Claude (maintenez Alt pour les voir sur les onglets).
       </div>
       <div className="sc-list">
         {SHORTCUT_ROWS.map((r) => {

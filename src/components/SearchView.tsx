@@ -26,6 +26,7 @@ import { BAR_ORDER, SOURCES, sourceDef, sourceLabel } from "../sources/registry"
 import type { ContactInfo, ResultItem, SourceId } from "../sources/types";
 import { shortcutLabel, sourceFromKey, toolLetter } from "../app/shortcuts";
 import { KeysStrip } from "./KeysStrip";
+import { LetterLabel } from "./LetterLabel";
 import { UpdateBanner } from "./UpdateBanner";
 import { ResultIcon, SourceTile } from "./icons";
 import { isPinned, togglePin } from "../sources/notion";
@@ -74,7 +75,9 @@ function SourcePills() {
           style={{ ["--src" as string]: id === "all" ? "var(--accent)" : SOURCES[id].color }}
         >
           <SourceTile id={id} size={16} />
-          <span>{sourceLabel(id)}</span>
+          <span>
+            <LetterLabel label={sourceLabel(id)} letter={toolLetter(id)} />
+          </span>
           {altHeld && <kbd className="pill-key">{toolLetter(id, st.toolShortcuts)}</kbd>}
         </button>
       ))}

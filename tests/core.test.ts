@@ -486,11 +486,11 @@ describe("Dans Shorteo : Alt + lettre change d'onglet", () => {
     expect(sourceFromKey(ev({ altKey: true, key: "p", code: "KeyP" }), BAR_ORDER, ts)).toBe("pipedrive");
     expect(sourceFromKey(ev({ altKey: true, key: "d", code: "KeyD" }), BAR_ORDER, ts)).toBe("drive");
     expect(sourceFromKey(ev({ altKey: true, key: "t", code: "KeyT" }), BAR_ORDER, ts)).toBe("all");
-    expect(toolLetter("mail", ts)).toBe("S");
-  });
-  it("suit le raccourci choisi (Ctrl+Alt+F pour Drive → Alt+F)", () => {
-    const custom = { ...ts, drive: "Ctrl+Alt+F" };
-    expect(sourceFromKey(ev({ altKey: true, key: "f", code: "KeyF" }), BAR_ORDER, custom)).toBe("drive");
+    expect(sourceFromKey(ev({ altKey: true, key: "m", code: "KeyM" }), BAR_ORDER, ts)).toBe("mail");
+    expect(sourceFromKey(ev({ altKey: true, key: "c", code: "KeyC" }), BAR_ORDER, ts)).toBe("claude");
+    expect(toolLetter("mail")).toBe("M");
+    expect(toolLetter("claude")).toBe("C");
+    expect(toolLetter("all")).toBe("T");
   });
   it("clavier AZERTY : Alt+& (touche 1) donne Partout, Alt+é (touche 2) Notion", () => {
     expect(sourceFromKey(ev({ altKey: true, key: "&", code: "Digit1" }), BAR_ORDER, ts)).toBe("all");
